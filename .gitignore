@@ -1,0 +1,31 @@
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+backend/venv/
+venv/
+ENV/
+env/
+
+# Environment Variables
+.env
+.env.local
+
+# Temporary Files & Generated CAD Artifacts
+backend/temp/
+*.stl
+*.step
+*.obj
+*.glb
+
+# IDE & Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Node / React Frontend (for Phase 4)
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
