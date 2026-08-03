@@ -8,7 +8,7 @@ Defines the Dual-Output API contract:
   - RecomputeRequest / RecomputeResponse: /api/recompute endpoint contracts.
 """
 from typing import List, Literal, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -18,7 +18,6 @@ from pydantic import BaseModel, Field
 class CADParameter(BaseModel):
     """
     Represents a single configurable design variable exposed as a UI slider.
-    The LLM must output an array of these alongside the generated code.
     """
     name: str = Field(
         ...,
@@ -32,22 +31,22 @@ class CADParameter(BaseModel):
         default="number",
         description="Parameter data type"
     )
-    default: float = Field(
-        ...,
-        description="Default starting value"
-    )
-    min: float = Field(
-        ...,
-        description="Minimum allowed value"
-    )
-    max: float = Field(
-        ...,
-        description="Maximum allowed value"
-    )
-    step: float = Field(
-        default=1.0,
-        description="Slider step increment"
-    )
+    default: float = Field(..., description="Default starting value")
+    min: float = Field(..., description="Minimum allowed value")
+    max: float = Field(..., description="Maximum allowed value")
+    step: float = Field(default=1.0, description="Slider step increment")
+
+    @model_validator(mode='after')
+    def validate_range(self) -> 'CADParameter':
+        """Ensures min <= default <= max for valid slider behavior."""
+        if self.min > self.max:
+            raise ValueError(f"Parameter '{self.name}': min ({self.min}) must be <= max ({self.max})")
+        if not (self.min <= self.default <= self.max):
+            raise ValueError(
+                f"Parameter '{self.name}': default ({self.default}) must be between "
+                f"min ({self.min}) and max ({self.max})"
+            )
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -58,13 +57,12 @@ class DualOutputPayload(BaseModel):
     """
     The structured JSON payload the LLM must produce.
     Contains BOTH the executable Python CAD script AND the parameter schema.
-    This is the core innovation: a single LLM call outputs everything needed.
     """
     python_code: str = Field(
         ...,
         description=(
-            "Complete, executable Python script targeting trimesh/FreeCAD Part API. "
-            "MUST begin with a PARAMS = {...} dictionary block containing all tunable variables. "
+            "Complete, executable Python script using the trimesh library only. "
+            "MUST begin with a PARAMS = {...} dictionary block. "
             "MUST write the output STL mesh to the OUTPUT_STL variable provided by the runtime."
         )
     )
@@ -112,6 +110,10 @@ class GenerateResponse(BaseModel):
         default=0,
         description="Number of LLM self-correction retries used (0 = first-pass success)"
     )
+    model_used: Optional[str] = Field(
+        default=None,
+        description="Which LLM model (tier) served the request"
+    )
 
 
 class RecomputeRequest(BaseModel):
@@ -131,4 +133,4 @@ class RecomputeResponse(BaseModel):
     mesh_url: Optional[str] = None
     step_url: Optional[str] = None
     mesh_info: Optional[Dict[str, Any]] = None
-    recomputation_time_ms: int
+    recomputation_time_ms: Optional[int] = None   # Consistent Optional with GenerateResponse

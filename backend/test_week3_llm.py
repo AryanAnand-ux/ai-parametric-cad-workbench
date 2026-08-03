@@ -112,13 +112,14 @@ async def test_3_end_to_end_generation():
     for prompt in test_prompts:
         print(f"\n  Prompt: '{prompt}'")
         try:
-            dual_output = LLMService.generate_dual_output(prompt)
-            print(f"  [OK] Part: '{dual_output.part_name}' | {len(dual_output.parameters)} params")
+            dual_output, model_used = LLMService.generate_dual_output(prompt)
+            print(f"  [OK] Model: {model_used}")
+            print(f"       Part: '{dual_output.part_name}' | {len(dual_output.parameters)} params")
             print(f"       Params: {[p.name for p in dual_output.parameters]}")
             print(f"       Code length: {len(dual_output.python_code)} chars")
 
             # Execute generated code
-            script_id = f"test_w3_{dual_output.part_name.lower().replace(' ', '_')}"
+            script_id = f"test_w3_{dual_output.part_name.lower().replace(' ', '_')[:20]}"
             exec_result = await CADRunner.execute_script_async(
                 script_id=script_id,
                 python_code=dual_output.python_code
@@ -127,10 +128,10 @@ async def test_3_end_to_end_generation():
             if exec_result["status"] == "success":
                 print(f"  [OK] Executed in {exec_result['recomputation_time_ms']} ms")
                 print(f"       Mesh: {exec_result.get('mesh_info', {}).get('dimensions_mm')}")
-                results.append({"prompt": prompt, "status": "success"})
+                results.append({"prompt": prompt, "status": "success", "model": model_used})
             else:
                 print(f"  [WARN] Execution failed: {exec_result.get('stderr', '')[:150]}")
-                results.append({"prompt": prompt, "status": "exec_error"})
+                results.append({"prompt": prompt, "status": "exec_error", "model": model_used})
 
         except Exception as e:
             print(f"  [FAIL] {e}")

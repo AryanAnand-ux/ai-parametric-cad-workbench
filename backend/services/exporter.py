@@ -1,13 +1,15 @@
 import os
+import sys
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
+from pathlib import Path
 import trimesh
 
 class GeometryExporter:
     """
     Handles CAD mesh validation, bounding box extraction, and 3D file conversion.
     """
-    
+
     @staticmethod
     def inspect_stl(stl_path: Path) -> Dict[str, Any]:
         """
@@ -15,13 +17,12 @@ class GeometryExporter:
         """
         if not stl_path.exists():
             raise FileNotFoundError(f"Mesh file not found at {stl_path}")
-            
+
         mesh = trimesh.load_mesh(str(stl_path))
-        
-        # Calculate bounding box dimensions
-        bounds = mesh.bounds  # [[min_x, min_y, min_z], [max_x, max_y, max_z]]
+
+        bounds = mesh.bounds   # [[min_x, min_y, min_z], [max_x, max_y, max_z]]
         dimensions = mesh.extents  # [length_x, length_y, length_z]
-        
+
         return {
             "is_valid": getattr(mesh, 'is_watertight', True),
             "volume_mm3": round(float(mesh.volume), 2) if hasattr(mesh, 'volume') and mesh.volume is not None else 0.0,
@@ -41,5 +42,5 @@ class GeometryExporter:
         Converts an STL file to OBJ format for smooth web rendering.
         """
         mesh = trimesh.load_mesh(str(stl_path))
-        mesh.export(str(output_output_obj_path if 'output_output_obj_path' in locals() else output_obj_path))
+        mesh.export(str(output_obj_path))   # Fixed: was incorrectly using undefined variable
         return output_obj_path

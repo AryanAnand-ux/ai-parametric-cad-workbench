@@ -7,9 +7,12 @@ venv/
 ENV/
 env/
 
-# Environment Variables
+# Environment Variables (NEVER commit these)
 .env
 .env.local
+frontend/.env
+frontend/.env.local
+frontend/.env*.local
 
 # Temporary Files & Generated CAD Artifacts
 backend/temp/
@@ -17,6 +20,15 @@ backend/temp/
 *.step
 *.obj
 *.glb
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Pytest cache
+.pytest_cache/
+.cache/
 
 # IDE & Editor Files
 .vscode/
@@ -29,3 +41,4 @@ backend/temp/
 frontend/node_modules/
 frontend/dist/
 frontend/.cache/
+frontend/build/

@@ -1,76 +1,185 @@
-# 🛠️ AI-Driven Parametric CAD Workbench
-> **A Natural Language to 3D Solid Modeling Platform via Headless CAD Execution & WebGL**
+# AI-Driven Parametric CAD Workbench
+
+> **Natural Language → 3D Solid Model.** Type a description, get an interactive parametric 3D part you can tune with sliders and export as STL/STEP.
+
+## 🚀 Project Overview
+
+This system bridges the gap between natural language design intent and production-ready CAD output. A user types something like *"a hollow cylinder with 20mm outer radius and 5mm wall thickness"* and the system:
+
+1. **Generates** executable Python code via a 3-tier LLM pipeline (Gemini 2.0 Flash → Gemini 2.5 Flash → Groq Llama-3.3-70B)
+2. **Executes** the script in an isolated subprocess using the trimesh geometry kernel
+3. **Exports** an STL mesh + STEP file for download or WebGL preview
+4. **Provides** UI parameter sliders for sub-200ms recomputation without re-calling the LLM
 
 ---
 
-## 📌 Project Overview
-The **AI-Driven Parametric CAD Workbench** bridges LLMs, Retrieval-Augmented Generation (RAG), and a headless Python geometry engine (FreeCAD / CadQuery) to synthesize editable 3D mechanical parts from plain English prompts.
+## 👥 Team
 
-### Key Technical Innovations
-- **Dual-Output AI Generation:** LLM outputs both executable Python CAD code and a structured JSON parameter schema.
-- **Zero-Latency Slider Recomputation:** UI slider changes bypass the LLM and re-run the backend geometry engine directly in $<200\text{ ms}$.
-- **Self-Correction Execution Loop:** Traps Python subprocess execution errors and automatically re-prompts the LLM to fix syntax or geometric bugs.
-- **Industry Standard Exports:** Supports `.stl` (for WebGL and 3D printing) and `.step` (for solid CAD modeling).
+| Role | Responsibility |
+|------|---------------|
+| **Lead (AI/RAG)** | LLM service, RAG pipeline, self-correction loop |
+| **Partner 2 (Backend/Geometry)** | FastAPI, CAD subprocess runner, geometry export |
+| **Partner 3 (Frontend/WebGL)** | React + Three.js viewer, parameter slider UI |
 
 ---
 
-## 🏗️ Repository Structure
+## 📁 Repository Structure
+
 ```
-d:/Projects/Minor_project/
-├── WEEKLY_PLAN.md               # 14-Week detailed execution roadmap
-├── README.md                    # Project README and quick start
-├── .gitignore                   # Git ignore patterns
+ai-parametric-cad-workbench/
+├── .gitignore
+├── README.md
+├── WEEKLY_PLAN.md
 └── backend/
-    ├── config.py                # System paths and configuration
-    ├── main.py                  # FastAPI application entry point
-    ├── requirements.txt         # Dependencies manifest
-    ├── test_pipeline.py         # Subprocess pipeline test suite
-    ├── test_api.py              # FastAPI async route test suite
-    ├── services/
-    │   ├── freecad_runner.py    # Async CAD runner & parameter injector
-    │   ├── exporter.py          # 3D mesh inspection & exporter
-    │   └── cleanup.py           # Temporary artifact cleanup manager
-    └── temp/
-        └── models/              # Static generated 3D models
+    ├── .env.example          ← Copy to .env and add your API keys
+    ├── config.py             ← Centralized paths and API key config
+    ├── main.py               ← FastAPI app with all route definitions
+    ├── schemas.py            ← Pydantic models: DualOutputPayload, CADParameter, etc.
+    ├── requirements.txt      ← All Python dependencies
+    ├── run.bat               ← Windows: start the server
+    ├── run_tests.bat         ← Windows: run all test suites
+    ├── test_pipeline.py      ← Week 1-2: CAD runner & geometry tests
+    ├── test_week3_llm.py     ← Week 3: LLM integration & schema tests
+    ├── test_api.py           ← Week 3: FastAPI endpoint tests
+    └── services/
+        ├── __init__.py
+        ├── freecad_runner.py ← Async subprocess CAD executor + param injection
+        ├── exporter.py       ← Mesh inspection (STL → OBJ conversion)
+        ├── cleanup.py        ← Artifact lifecycle manager
+        └── llm_service.py    ← 3-tier LLM orchestrator with self-correction
 ```
 
----
-
-## 👥 3-Member Team Task Breakdown
-
-| Team Member | Role | Focus Area & Deliverables |
-| :--- | :--- | :--- |
-| **Partner 1 (Lead)** | **AI & RAG Specialist** | Gemini 1.5 Dual-Output parser, ChromaDB vector store, system prompts, self-correction execution loop. |
-| **Partner 2** | **Backend & Geometry Specialist** | CAD script macro library, STEP/STL export engine, fast `/api/recompute` optimization, execution benchmarking. |
-| **Partner 3** | **Frontend & WebGL Specialist** | React 18 + Vite dashboard, `@react-three/fiber` 3D Canvas, dynamic parameter sliders, code viewer drawer. |
+> **Note:** `frontend/` directory will be created in **Week 9** (React + Three.js WebGL viewer).
 
 ---
 
-## 🚀 Quick Start Guide
+## ⚙️ Backend Setup (All Team Members)
 
-### 1. Backend Setup
+### 1. Clone the Repository
 ```bash
-# Navigate to backend directory
-cd backend
+git clone https://github.com/AryanAnand-ux/ai-parametric-cad-workbench.git
+cd ai-parametric-cad-workbench/backend
+```
 
-# Create & activate virtual environment
+### 2. Create Virtual Environment
+```bash
+# Windows
 python -m venv venv
-.\venv\Scripts\activate  # On Windows
+venv\Scripts\activate
 
-# Install dependencies
+# Linux / macOS
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 3. Install Dependencies
+```bash
 pip install -r requirements.txt
+```
 
-# Run backend tests
-python test_pipeline.py
-python test_api.py
+### 4. Configure API Keys ⚠️
+```bash
+# Copy the example file
+copy .env.example .env       # Windows
+cp .env.example .env         # Linux/macOS
 
-# Launch FastAPI development server
+# Edit .env and add your real keys:
+# GEMINI_API_KEY=  → get from https://aistudio.google.com/apikey (free)
+# GROQ_API_KEY=    → get from https://console.groq.com/keys (free)
+```
+> **NEVER commit your `.env` file. It is in `.gitignore`.**
+
+### 5. Start the Server
+```bash
+# Windows (double-click or from terminal):
+run.bat
+
+# Or manually:
 python main.py
 ```
 
-### 2. API Endpoints
-- `GET /api/health`: Check service readiness.
-- `POST /api/execute-test`: Execute a Python CAD script in an isolated subprocess.
-- `POST /api/recompute`: Fast parametric slider recomputation endpoint.
-- `POST /api/admin/cleanup`: Trigger artifact garbage collection.
-- `GET /static/models/{filename}`: Static 3D model download route.
+Server starts at: **http://localhost:8000**
+Interactive API docs: **http://localhost:8000/docs**
+
+### 6. Run Tests
+```bash
+# Windows:
+run_tests.bat
+
+# Or manually:
+python test_pipeline.py
+python test_week3_llm.py
+python test_api.py
+```
+
+---
+
+## 🔌 API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/health` | Service health + API key status |
+| `POST` | `/api/generate` | **Primary:** NL prompt → LLM → execute → STL mesh |
+| `POST` | `/api/recompute` | Fast parametric recomputation (no LLM, <200ms) |
+| `GET` | `/api/admin/models` | List all stored model artifacts |
+| `POST` | `/api/admin/cleanup` | Delete stale artifacts older than 1 hour |
+| `GET` | `/static/models/{file}` | Download STL/STEP files |
+
+### Example: Generate a Part
+```bash
+curl -X POST http://localhost:8000/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Create a hollow cylinder with 20mm outer radius and 5mm wall thickness"}'
+```
+
+### Example: Recompute with Updated Sliders
+```bash
+curl -X POST http://localhost:8000/api/recompute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "script_id": "part_abc12345",
+    "python_code": "PARAMS = {\"outer_radius\": 20.0, ...}\n...",
+    "updated_parameters": {"outer_radius": 35.0}
+  }'
+```
+
+---
+
+## 🧠 Architecture
+
+```
+User Prompt (NL)
+      │
+      ▼
+ LLM 3-Tier Fallback
+ ├── Gemini 2.0 Flash   ← Primary (best quality)
+ ├── Gemini 2.5 Flash   ← Secondary (separate model quota)
+ └── Groq Llama-3.3-70B ← Tertiary (always-on fallback)
+      │
+      ▼
+ DualOutputPayload
+ ├── python_code (trimesh script with PARAMS block)
+ └── parameters  (slider schema for the UI)
+      │
+      ▼
+ CAD Subprocess Executor (isolated Python process)
+ │    ├── Success → STL + STEP exported
+ │    └── Failure → Self-Correction Loop (up to 3 retries)
+      │
+      ▼
+ API Response → STL mesh_url + parameter sliders
+```
+
+---
+
+## 📅 Development Progress
+
+| Week | Status | Deliverable |
+|------|--------|-------------|
+| W1 | ✅ Done | Project setup, venv, CAD subprocess runner, STL export |
+| W2 | ✅ Done | FastAPI server, async execution, artifact cleanup, test suite |
+| W3 | ✅ Done | Gemini 2.0/2.5 Flash + Groq LLM service, self-correction loop, Pydantic schemas |
+| W4 | 🔜 Next | RAG dataset curation, ChromaDB vector store |
+| W5–8 | 📋 Planned | RAG integration, error analysis, optimization |
+| W9–11 | 📋 Planned | React + Three.js frontend, WebGL viewer |
+| W12–14 | 📋 Planned | Testing, deployment, documentation |

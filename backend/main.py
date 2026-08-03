@@ -1,21 +1,19 @@
 """
-FastAPI Application Entry Point
-AI-Driven Parametric CAD Workbench API
+FastAPI Application Entry Point — AI-Driven Parametric CAD Workbench API
 """
-import os
+import asyncio
 import uuid
 import time
 import logging
-from typing import Dict, Any, Optional
+from typing import Optional
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
-# Load .env file if present
 load_dotenv()
 
-from config import MODELS_DIR, PORT, HOST
+from config import MODELS_DIR, PORT, HOST, GEMINI_API_KEY
 from schemas import (
     GenerateRequest, GenerateResponse,
     RecomputeRequest, RecomputeResponse
@@ -36,21 +34,23 @@ app = FastAPI(
     title="AI-Driven Parametric CAD Workbench API",
     description=(
         "Natural Language to 3D Solid Modeling Platform. "
-        "Generates parametric Python CAD scripts via Gemini 1.5 with "
-        "sub-200ms slider recomputation and automated self-correction."
+        "Generates parametric Python CAD scripts via Gemini 2.0 Flash (primary) "
+        "with Gemini 2.5 Flash + Groq Llama-3.3-70B fallback. "
+        "Supports sub-200ms slider recomputation and automated self-correction."
     ),
     version="2.0.0"
 )
 
+# CORS: allow_credentials requires explicit origins (not wildcard)
+# Use ["*"] without credentials for open dev access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,   # Must be False when allow_origins=["*"]
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Serve generated 3D model files
 app.mount("/static/models", StaticFiles(directory=str(MODELS_DIR)), name="models")
 
 
@@ -60,49 +60,53 @@ app.mount("/static/models", StaticFiles(directory=str(MODELS_DIR)), name="models
 
 @app.get("/api/health")
 async def health_check():
-    """Returns service health status."""
+    """Returns service health and API key configuration status."""
     return {
         "status": "online",
         "service": "AI-Driven Parametric CAD Workbench",
         "version": "2.0.0",
         "storage_ready": MODELS_DIR.exists(),
-        "gemini_configured": bool(os.getenv("GEMINI_API_KEY", "")),
+        "gemini_configured": bool(GEMINI_API_KEY),   # Use imported config var
         "timestamp": time.time()
     }
 
 
 # ---------------------------------------------------------------------------
-# Primary Generation Endpoint (Week 3)
+# Primary Generation Endpoint
 # ---------------------------------------------------------------------------
 
 @app.post("/api/generate", response_model=GenerateResponse)
 async def generate_part(payload: GenerateRequest, background_tasks: BackgroundTasks):
     """
-    Primary Generation Endpoint.
+    Primary Generation Endpoint (Week 3 deliverable).
 
     Flow:
-    1. Calls Gemini 1.5 with structured dual-output prompt.
+    1. Calls LLM (3-tier fallback) with structured dual-output prompt.
     2. Parses response into DualOutputPayload (python_code + parameters).
-    3. Executes the CAD script in an isolated subprocess.
-    4. If execution fails: self-correction loop (up to 3 retries via LLM).
-    5. Returns mesh_url (STL), step_url (STEP), parameters, and mesh metrics.
+    3. Executes CAD script in an isolated subprocess.
+    4. Self-correction loop (up to 3 retries) if execution fails.
+    5. Returns STL mesh_url, STEP step_url, parameters, and mesh metrics.
     """
     script_id = f"part_{uuid.uuid4().hex[:8]}"
     self_correction_attempts = 0
+    model_used = "unknown"
 
-    logger.info(f"[GENERATE] script_id={script_id} | prompt='{payload.prompt[:60]}...'")
+    prompt_preview = payload.prompt[:60] + ("..." if len(payload.prompt) > 60 else "")
+    logger.info(f"[GENERATE] script_id={script_id} | prompt='{prompt_preview}'")
 
-    # Step 1: LLM Dual-Output Generation
+    # Step 1: LLM Dual-Output Generation (3-tier fallback)
     try:
-        dual_output = LLMService.generate_dual_output(payload.prompt)
+        dual_output, model_used = LLMService.generate_dual_output(payload.prompt)
     except Exception as e:
         raise HTTPException(
             status_code=502,
-            detail=f"LLM generation failed: {str(e)}"
+            detail=f"LLM generation failed (all 3 tiers exhausted): {str(e)}"
         )
 
-    logger.info(f"[GENERATE] LLM produced code ({len(dual_output.python_code)} chars), "
-                f"{len(dual_output.parameters)} parameters")
+    logger.info(
+        f"[GENERATE] model={model_used} | part='{dual_output.part_name}' | "
+        f"code={len(dual_output.python_code)} chars | {len(dual_output.parameters)} params"
+    )
 
     # Step 2: Execute CAD Script with Self-Correction Loop
     current_code = dual_output.python_code
@@ -117,39 +121,36 @@ async def generate_part(payload: GenerateRequest, background_tasks: BackgroundTa
         if execution_result["status"] == "success":
             break
 
-        # Execution failed — attempt self-correction
         if attempt < LLMService.MAX_RETRIES:
             self_correction_attempts += 1
-            traceback_text = execution_result.get("stderr", "Unknown error")
+            traceback_text = execution_result.get("stderr", "Unknown execution error")
             logger.warning(
                 f"[SELF-CORRECT] Attempt {self_correction_attempts}/{LLMService.MAX_RETRIES} "
                 f"for script_id={script_id}"
             )
 
             try:
-                corrected = LLMService.correct_code(
+                corrected, model_used = LLMService.correct_code(
                     user_prompt=payload.prompt,
                     failed_code=current_code,
                     error_traceback=traceback_text
                 )
                 current_code = corrected.python_code
-                # Update parameters from corrected output
                 dual_output = corrected
+                logger.info(f"[SELF-CORRECT] Corrected via model={model_used}")
             except Exception as correction_error:
-                logger.error(f"[SELF-CORRECT] LLM correction call failed: {correction_error}")
+                logger.error(f"[SELF-CORRECT] Correction call failed: {correction_error}")
                 break
         else:
-            # All retries exhausted
             raise HTTPException(
                 status_code=422,
                 detail={
                     "error": "CAD script execution failed after all self-correction attempts.",
-                    "attempts": self_correction_attempts,
+                    "self_correction_attempts": self_correction_attempts,
                     "last_traceback": execution_result.get("stderr", "")[:500]
                 }
             )
 
-    # Step 3: Schedule background cleanup
     background_tasks.add_task(ArtifactCleanupManager.cleanup_old_artifacts, 86400)
 
     return GenerateResponse(
@@ -163,7 +164,8 @@ async def generate_part(payload: GenerateRequest, background_tasks: BackgroundTa
         step_url=execution_result.get("step_url"),
         mesh_info=execution_result.get("mesh_info"),
         recomputation_time_ms=execution_result.get("recomputation_time_ms"),
-        self_correction_attempts=self_correction_attempts
+        self_correction_attempts=self_correction_attempts,
+        model_used=model_used
     )
 
 
@@ -175,13 +177,12 @@ async def generate_part(payload: GenerateRequest, background_tasks: BackgroundTa
 async def recompute_part(payload: RecomputeRequest):
     """
     Fast Parametric Recomputation (<200ms target).
-    Injects updated UI slider values directly into the PARAMS block
-    and re-executes the CAD subprocess — NO LLM call required.
+    Injects updated slider values into the PARAMS block and re-executes — NO LLM call.
     """
     result = await CADRunner.execute_script_async(
         script_id=f"{payload.script_id}_recomputed",
         python_code=payload.python_code,
-        parameters=payload.updated_parameters
+        parameters=dict(payload.updated_parameters)
     )
 
     if result["status"] == "error":
@@ -196,7 +197,7 @@ async def recompute_part(payload: RecomputeRequest):
         mesh_url=result.get("mesh_url"),
         step_url=result.get("step_url"),
         mesh_info=result.get("mesh_info"),
-        recomputation_time_ms=result["recomputation_time_ms"]
+        recomputation_time_ms=result.get("recomputation_time_ms")
     )
 
 
@@ -206,8 +207,12 @@ async def recompute_part(payload: RecomputeRequest):
 
 @app.post("/api/admin/cleanup")
 async def trigger_cleanup():
-    """Manually trigger stale artifact cleanup."""
-    count = ArtifactCleanupManager.cleanup_old_artifacts(max_age_seconds=0)
+    """Manually trigger stale artifact cleanup (async-safe)."""
+    loop = asyncio.get_event_loop()
+    # Run sync blocking I/O in a thread pool to avoid blocking the event loop
+    count = await loop.run_in_executor(
+        None, ArtifactCleanupManager.cleanup_old_artifacts, 3600   # 1 hour threshold (not 0)
+    )
     return {"status": "success", "removed_files": count}
 
 
