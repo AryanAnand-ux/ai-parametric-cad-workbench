@@ -18,10 +18,11 @@ from schemas import (
     GenerateRequest, GenerateResponse,
     RecomputeRequest, RecomputeResponse
 )
-from services.freecad_runner import CADRunner
+from services.cad_runner import CADRunner
 from services.exporter import GeometryExporter
 from services.cleanup import ArtifactCleanupManager
 from services.llm_service import LLMService
+from services.rag_service import RAGService
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cad_workbench.main")
@@ -52,6 +53,17 @@ app.add_middleware(
 )
 
 app.mount("/static/models", StaticFiles(directory=str(MODELS_DIR)), name="models")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Build or verify RAG ChromaDB index on startup."""
+    try:
+        count = RAGService.build_index()
+        total = RAGService.index_size()
+        logger.info(f"[STARTUP] RAG index ready: {count} new docs added, {total} total stored in ChromaDB.")
+    except Exception as e:
+        logger.error(f"[STARTUP] Failed to initialize RAG index: {e}")
 
 
 # ---------------------------------------------------------------------------

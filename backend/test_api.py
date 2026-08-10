@@ -20,9 +20,12 @@ SAMPLE_CODE = """PARAMS = {
     "height": 10.0
 }
 
-import trimesh
-mesh = trimesh.creation.box(extents=[PARAMS["bracket_length"], PARAMS["width"], PARAMS["height"]])
-mesh.export(OUTPUT_STL)
+from build123d import *
+with BuildPart() as part:
+    Box(PARAMS["bracket_length"], PARAMS["width"], PARAMS["height"])
+
+export_stl(part.part, OUTPUT_STL)
+export_step(part.part, OUTPUT_STEP)
 """
 
 async def test_fastapi_routes_async():

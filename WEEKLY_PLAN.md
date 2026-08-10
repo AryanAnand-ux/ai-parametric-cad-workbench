@@ -1,201 +1,288 @@
-# 🛠️ AI-Driven Parametric CAD Workbench
-## 📅 14-Week Comprehensive Project Execution Plan
+# AI-Driven Parametric CAD Workbench — Master Plan
 
-> **Project Title:** AI-Driven Parametric CAD Workbench  
-> **Core Concept:** A Natural Language to 3D Solid Modeling Platform via Headless CAD Execution (FreeCAD / CadQuery) & WebGL (Three.js / React)  
-> **Key Innovation:** Dual-Output LLM Generation (Code + Parameter Schema), Sub-200ms Slider Recomputation (Bypassing LLM), Self-Correction Execution Loop, and STEP/STL Industry Exports.
+## 🎯 Project Vision
+A system where a user types natural language → gets a fully parametric 3D model
+in the browser → adjusts sliders in real-time → downloads production-grade STL/STEP files.
 
 ---
 
-## 🏗️ System Architecture & Technology Stack
+## 🔑 Core Architecture Decisions (Final)
+
+| Component | Choice | Reason |
+|-----------|--------|--------|
+| **CAD Engine** | build123d | Modern CadQuery successor, OCCT-based, LLM-friendly context-manager syntax, true STEP/STL, pip installable |
+| **LLM Primary** | Gemini 2.0 Flash | Native JSON mode, fast, free tier |
+| **LLM Fallback** | Gemini 2.5 Flash → Groq Llama-3.3-70B | 3-tier resilience |
+| **RAG Store** | ChromaDB (local) | Zero setup, Windows-compatible, free |
+| **RAG Embeddings** | Gemini text-embedding-004 | Free, generous quota, same API key |
+| **RAG Strategy** | Snippet pairs (NL description → Python code) | Best for code generation tasks |
+| **Frontend** | React + Vite + React Three Fiber | Industry standard 3D web, component-based |
+| **Security** | AST-based sandbox (whitelist imports) | Prevents arbitrary code execution |
+| **API** | FastAPI (already built) | Keep, already working ✅ |
+
+---
+
+## 🏗️ Final Architecture
 
 ```
-                              USER INTERFACE (React 18 + Vite + TypeScript)
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│  ┌───────────────────────────┐    ┌───────────────────────────┐    ┌─────────────────────┐  │
-│  │ Prompt & Chat Input Panel │    │ Dynamic Parametric Sliders│    │ Three.js 3D Canvas  │  │
-│  └─────────────┬─────────────┘    └─────────────┬─────────────┘    └──────────▲──────────┘  │
-└────────────────│────────────────────────────────│─────────────────────────────│─────────────┘
-                 │ (Text Prompt)                  │ (Updated PARAMS Payload)    │ (STL / GLB)
-                 ▼                                ▼                             │
-┌───────────────────────────────────────────────────────────────────────────────┴─────────────┐
-│                               FASTAPI BACKEND SERVICE                                      │
-│                                                                                             │
-│  ┌─────────────────────────────────┐           ┌─────────────────────────────────────────┐  │
-│  │ RAG & LLM Orchestration Layer   │           │ Parametric Recomputation Engine         │  │
-│  │ - Gemini 1.5 Pro/Flash API      │           │ - Injects new PARAMS dictionary header  │  │
-│  │ - ChromaDB Doc Vector Search    │           │ - Zero LLM call, <150ms recompute       │  │
-│  └────────────────┬────────────────┘           └────────────────────┬────────────────────┘  │
-│                   │                                                 │                       │
-│                   └────────────────────────┬────────────────────────┘                       │
-│                                            │                                                │
-│                                            ▼                                                │
-│                        ┌──────────────────────────────────────┐                             │
-│                        │ Headless CAD Execution Subprocess    │                             │
-│                        │ - Runs in background (FreeCAD/CadQuery)│                           │
-│                        │ - Self-Correction loop on stderr fail│                             │
-│                        └───────────────────┬──────────────────┘                             │
-│                                            │                                                │
-│                                            ▼                                                │
-│                        ┌──────────────────────────────────────┐                             │
-│                        │ Mesh & Geometry Exporter             │                             │
-│                        │ - Exports .STL, .GLB, and .STEP      │                             │
-│                        └──────────────────────────────────────┘                             │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
+User Prompt (Natural Language)
+         │
+         ▼
+   ┌─────────────────┐
+   │  RAG Retrieval  │  ← ChromaDB vector search
+   │  (top 3 match)  │  ← Gemini text-embedding-004
+   └────────┬────────┘
+            │ (NL query + 3 similar build123d code examples)
+            ▼
+   ┌─────────────────────────────────┐
+   │  LLM 3-Tier Fallback           │
+   │  Gemini 2.0 → 2.5 → Groq       │
+   │  Output: {python_code, params} │
+   └────────┬────────────────────────┘
+            │
+            ▼
+   ┌─────────────────────────────┐
+   │  AST Security Sandbox       │  ← whitelist: build123d, math, typing only
+   │  → ast.parse() validation   │
+   └────────┬────────────────────┘
+            │ safe code
+            ▼
+   ┌─────────────────────────────┐
+   │  build123d Subprocess       │  ← isolated Python process (15s timeout)
+   │  → exports .stl + .step    │
+   │  → if fails → LLM retry    │  ← self-correction (3 attempts)
+   └────────┬────────────────────┘
+            │ mesh file
+            ▼
+   ┌─────────────────────────────────────────┐
+   │  React + React Three Fiber (R3F)        │
+   │  • Interactive WebGL 3D viewer          │
+   │  • Dynamic parameter sliders (from JSON)│
+   │  • <200ms recompute on slider change    │
+   │  • Download STL / STEP buttons          │
+   │  • Chat-to-Modify NL input              │
+   └─────────────────────────────────────────┘
 ```
 
 ---
 
-## 📅 Detailed Weekly Roadmap (14 Weeks)
-
-### 🔹 Phase 1: Environment Setup & Core Subprocess Engine (Weeks 1 – 3)
-
-#### 📍 Week 1: Project & Repository Initialization
-- **Tasks:**
-  - Initialize Git workspace with `/backend` and `/frontend` directories.
-  - Setup Python 3.10+ virtual environment and install backend core dependencies (`fastapi`, `uvicorn`, `pydantic`, `cadquery`, `trimesh`).
-  - Configure FreeCAD environment paths / python bindings fallback setup (`FreeCADCmd` / `CadQuery` dual engine strategy).
-  - Create standard directory hierarchy for static generated artifacts (`/backend/temp/`).
-- **Deliverables:**
-  - Standardized project directory structure.
-  - Standalone script verifying background execution and headless `.stl` / `.step` file export from Python.
-
-#### 📍 Week 2: FastAPI CAD Subprocess & Execution Pipeline
-- **Tasks:**
-  - Build core FastAPI application server with CORS policy and async routing.
-  - Develop `freecad_runner.py` service module that accepts Python code strings, writes them safely to temporary files, and executes them in isolated subprocesses.
-  - Implement execution timeout limits (e.g., 10-second threshold) and process cleanup routines to prevent memory leakage.
-  - Add `/api/health` and basic file serving static routes.
-- **Deliverables:**
-  - Functional FastAPI service executing raw CAD Python code and serving generated `.stl` mesh URLs.
-
-#### 📍 Week 3: LLM Integration & Dual-Output Schema Definition
-- **Tasks:**
-  - Integrate Gemini 1.5 API client with structured JSON output settings (`response_mime_type="application/json"`).
-  - Define Pydantic models for the **Dual Output Payload**:
-    - `python_code`: Executable Python CAD script with standardized `PARAMS = {...}` dictionary.
-    - `parameters`: Array of configurable parameters (`name`, `label`, `default`, `min`, `max`, `step`, `type`).
-  - Test zero-shot prompt generation for basic primitives (box, cylinder, cone, sphere, hollow pipe).
-- **Deliverables:**
-  - Reliable LLM service producing valid dual-output payloads matching the schema.
+## 📅 Week-by-Week Plan (Weeks 1–14)
 
 ---
 
-### 🔹 Phase 2: RAG Knowledge Base & Self-Correction Engine (Weeks 4 – 6)
+### ✅ PHASE 1: Foundation (Weeks 1–3) — COMPLETE
 
-#### 📍 Week 4: RAG Dataset Curation & Vector Store Setup
-- **Tasks:**
-  - Collect official API documentation for `Part` primitives, vector mathematics, placements, boolean operations (`cut`, `fuse`, `common`), and features (`fillet`, `chamfer`).
-  - Curate 25 high-quality, pre-validated CAD Python macros demonstrating parametric variable scoping (`PARAMS` header) and offset placement logic.
-  - Set up ChromaDB vector database and chunk/embed curated documents using Gemini/SentenceTransformer embeddings.
-- **Deliverables:**
-  - Ingested ChromaDB vector database containing indexed CAD API reference manuals and benchmark macros.
-
-#### 📍 Week 5: Prompt Engineering & Retrieval Integration
-- **Tasks:**
-  - Build RAG query pipeline using ChromaDB to retrieve top-$k$ relevant macro snippets based on user prompt intent.
-  - Construct specialized system prompts instructing LLM on proper CSG construction techniques (center-offset calculation, vector alignment).
-  - Enforce standard `PARAMS = {...}` dictionary injection at the top of every generated script.
-- **Deliverables:**
-  - RAG-augmented generation pipeline consistently producing syntactically correct parametric scripts.
-
-#### 📍 Week 6: Self-Correction Loop Development
-- **Tasks:**
-  - Wrap script execution inside FastAPI with error capture (`try/except` capturing `stderr` and `traceback`).
-  - Implement multi-turn re-prompting loop: if execution fails, feed broken code + traceback error log back to Gemini for automated patching.
-  - Set maximum retry ceiling (3 automated attempts) before failing gracefully.
-- **Deliverables:**
-  - Automated self-correction engine capable of auto-fixing minor syntax or geometric calculation errors.
+| Week | Deliverable | Status |
+|------|-------------|--------|
+| W1 | Project setup, venv, async subprocess CAD runner, STL export | ✅ Done |
+| W2 | FastAPI server, artifact cleanup, concurrent execution, test suite | ✅ Done |
+| W3 | LLM 3-tier service, Pydantic dual-output schemas, self-correction loop | ✅ Done |
 
 ---
 
-### 🔹 Phase 3: Mid-Semester Evaluation & Buffer (Weeks 7 – 8)
+### 🔧 PHASE 2: CAD Engine + RAG Setup (Weeks 4–5)
 
-#### 📍 Week 7: Mid-Term Evaluation & Progress Documentation
-- **Tasks:**
-  - Compile comprehensive Mid-Semester Progress Report (Architecture, Methodology, Initial Benchmarks).
-  - Prepare CLI / API terminal demo showcasing natural language prompt processing $\rightarrow$ Dual Output $\rightarrow$ Automated Execution $\rightarrow$ Valid `.stl`/`.step` generation.
-  - Present progress to project guides and evaluators.
-- **Deliverables:**
-  - Mid-Semester Report & Working CLI backend demo.
+#### Week 4 — Migrate to build123d + RAG Foundation
+**Goal:** Replace trimesh with build123d. Scaffold ChromaDB. Write first 20 CAD examples.
 
-#### 📍 Week 8: Buffer & Edge Case Refinement
-- **Tasks:**
-  - Address feedback from mid-term evaluation.
-  - Test prompt boundary cases (e.g., negative dimensions, zero-radius holes, overlapping boolean cuts).
-  - Optimize ChromaDB top-$k$ parameters to keep context prompt concise and fast.
-- **Deliverables:**
-  - Hardened backend engine with improved error handling for invalid geometry inputs.
+| Task | Owner | Details |
+|------|-------|---------|
+| Install + integrate build123d | P2 (Backend) | `pip install build123d`, rewrite `freecad_runner.py` → `cad_runner.py` |
+| Update system prompt for build123d | Lead (AI) | Context-manager syntax, no `os`/`sys`, output via `export_stl(path)` |
+| Write 20 CAD example snippet pairs | Lead (AI) | `{description: "...", code: "..."}` — box, cylinder, bracket, flange, shaft |
+| Set up ChromaDB locally | Lead (AI) | `pip install chromadb`, create `services/rag_service.py` |
+| Scaffold React + Vite app | P3 (Frontend) | `npm create vite@latest frontend`, add React Three Fiber |
+| Render hardcoded static STL in browser | P3 (Frontend) | Verify Three.js pipeline works before backend connects |
+| Test build123d runner with 5 prompts | P2 (Backend) | Confirm STL + STEP exports correctly |
 
----
-
-### 🔹 Phase 4: React UI, WebGL Viewport & Parametric Controls (Weeks 9 – 11)
-
-#### 📍 Week 9: React + Three.js 3D Viewport Development
-- **Tasks:**
-  - Initialize React 18 + Vite + TypeScript frontend application with Tailwind CSS and Lucide Icons.
-  - Integrate `@react-three/fiber` and `@react-three/drei` standard 3D canvas viewport.
-  - Implement `STLLoader` with vertex normal recalculation for smooth CAD surface shading.
-  - Add viewport controls: OrbitControls, bounding box overlay, CAD grid floor, perspective/orthographic view toggle, lighting setups, and camera reset button.
-- **Deliverables:**
-  - High-performance, interactive 3D WebGL viewport in the React frontend.
-
-#### 📍 Week 10: Dynamic Parametric Slider Panel & Sub-200ms Recomputation
-- **Tasks:**
-  - Build dynamic React `SliderPanel` component that parses the LLM's `parameters` JSON array and renders input sliders (`min`, `max`, `step`, `default`).
-  - Implement `/api/recompute` backend endpoint: accepts `script_id` and updated `PARAMS` values, performs regex string header injection, and re-executes CAD runner directly (bypassing LLM).
-  - Implement debounced state updates on the frontend to trigger fast recomputations while user drags sliders.
-- **Deliverables:**
-  - Real-time interactive UI sliders updating the 3D WebGL mesh on-the-fly in under 200ms.
-
-#### 📍 Week 11: Prompt Chat Panel, Code Inspector & File Exporters
-- **Tasks:**
-  - Build `ChatPanel` component for entering natural language design prompts with history and status indicators (Generating, Self-Correcting, Ready).
-  - Build collapsible `CodeDrawer` component allowing users to view and copy generated Python CAD code.
-  - Add download buttons for `.stl` (3D printing), `.step` (CAD modeling), and `.py` (CAD script macro).
-- **Deliverables:**
-  - Complete, end-to-end web dashboard linking prompt input, 3D viewport, parameter sliders, code viewer, and export handlers.
+**Exit Criteria:** build123d generates a correct STEP file from a CadQuery-style script, 20 examples loaded in ChromaDB.
 
 ---
 
-### 🔹 Phase 5: Testing, Benchmarking & Final Viva Defense (Weeks 12 – 14)
+#### Week 5 — RAG Corpus + Embeddings Pipeline
+**Goal:** 100+ examples embedded and searchable. RAG retrieval hooked to LLM.
 
-#### 📍 Week 12: System Benchmarking & Latency Performance Tuning
-- **Tasks:**
-  - Evaluate platform across 20 benchmark mechanical parts (e.g., mounting bracket, spur gear, hollow box with lid, pipe flange, step pulley).
-  - Measure performance metrics:
-    - **Generation Latency:** Initial LLM generation time ($<3\text{s}$).
-    - **Recomputation Latency:** Slider update time ($<200\text{ms}$).
-    - **Self-Correction Recovery Rate:** Percentage of execution errors auto-resolved ($>60\%$).
-    - **First-Pass Execution Accuracy:** Code validity ($>85\%$).
-  - Refine UI animations, glassmorphism aesthetics, dark mode, and loading state visual cues.
-- **Deliverables:**
-  - Comprehensive benchmark dataset and fully polished web application.
+| Task | Owner | Details |
+|------|-------|---------|
+| Write 80 more build123d example pairs | Lead + P2 | Gears, enclosures, L-brackets, T-slots, mounting plates, shafts |
+| Scrape + process FreeCAD Python scripting wiki | Lead (AI) | Filter to Python API pages only, extract code blocks, adapt to build123d |
+| Implement Gemini `text-embedding-004` pipeline | Lead (AI) | Embed all NL descriptions into ChromaDB |
+| Implement `rag_service.py` retrieval | Lead (AI) | `retrieve_top_k(query, k=3)` → returns code snippets |
+| Hook RAG into LLM system prompt | Lead (AI) | Dynamic few-shot: inject top-3 examples before LLM call |
+| Frontend: basic slider UI prototype | P3 (Frontend) | Hardcoded sliders connected to dummy `recompute` calls |
+| Frontend: Loading state / spinner | P3 (Frontend) | Show spinner while mesh generates |
 
-#### 📍 Week 13: Final Documentation, Video Demo & Presentation Prep
-- **Tasks:**
-  - Complete Final Minor Project Report (Abstract, Literature Survey, System Architecture, Methodologies, Results, Future Scope).
-  - Record a 2-minute high-resolution video walkthrough demonstrating real-time parameter tweaking and STEP file export into external CAD tools (SolidWorks / Fusion 360).
-  - Design slides for final defense presentation.
-- **Deliverables:**
-  - Final Project Report, Video Demo, and Viva Presentation Deck.
-
-#### 📍 Week 14: Final Defense & Viva Demonstration
-- **Tasks:**
-  - Deploy final system locally or to cloud instance.
-  - Conduct live demonstration during college minor project viva.
-  - Field questions from evaluators and project committee.
-- **Deliverables:**
-  - Successful project defense and final project submission.
+**Exit Criteria:** User types "hollow cylinder", RAG finds annulus example, LLM uses it as reference, correct build123d code generated.
 
 ---
 
-## 📊 Summary of Weekly Milestones
+### 🔗 PHASE 3: Full Pipeline + Performance (Weeks 6–8)
 
-| Phase | Weeks | Focus Area | Key Output / Milestone |
-| :--- | :--- | :--- | :--- |
-| **Phase 1** | W1 – W3 | Environment & Core Pipeline | Backend FastAPI executing CAD scripts & LLM dual output setup |
-| **Phase 2** | W4 – W6 | RAG & Self-Correction | Vector store ingestion & automated code self-patching loop |
-| **Phase 3** | W7 – W8 | Mid-Sem Evaluation | Mid-semester defense & edge-case hardening |
-| **Phase 4** | W9 – W11 | Web UI & WebGL Viewport | React frontend with R3F canvas, sub-200ms sliders & STEP exports |
-| **Phase 5** | W12 – W14 | Benchmarking & Final Viva | System benchmarks, final report, video demo & project defense |
+#### Week 6 — End-to-End "Hello World" Pipeline
+**Goal:** Full loop works: NL → RAG → LLM → build123d → STL displayed in browser with dynamic sliders.
+
+| Task | Owner | Details |
+|------|-------|---------|
+| Connect frontend to `/api/generate` | P3 + P2 | Fetch API, handle JSON response, render STL |
+| Dynamically generate sliders from `parameters` JSON | P3 (Frontend) | Map `CADParameter` schema to React slider components |
+| Wire sliders to `/api/recompute` | P3 (Frontend) | Debounce 100ms, send `updated_parameters` on slider change |
+| AST security sandbox | P2 (Backend) | `ast.parse()` whitelist: only `build123d`, `math`, `typing` imports allowed |
+| STEP + STL download endpoints | P2 (Backend) | `/api/download/{script_id}/{format}` |
+| Integration testing (5 real prompts end-to-end) | All | Document pass/fail rates |
+
+**Exit Criteria:** Full demo works for 5/5 test prompts end-to-end, sliders update the 3D model live.
+
+---
+
+#### Week 7 — Self-Correction + RAG Quality Tuning
+**Goal:** Improve reliability. Measure and improve first-pass success rate from ~65% to 85%+.
+
+| Task | Owner | Details |
+|------|-------|---------|
+| Measure LLM first-pass success rate (20 prompts) | Lead (AI) | Baseline benchmarking |
+| Improve correction prompt with build123d-specific hints | Lead (AI) | Topology errors, context-manager scope issues |
+| Expand RAG to 150 examples | Lead (AI) | Focus on failure cases from benchmarking |
+| Re-rank RAG results (MMR diversity) | Lead (AI) | Avoid injecting 3 identical examples |
+| Error categorization dashboard | P2 (Backend) | Log error types: syntax / topology / timeout |
+| Frontend: error message display | P3 (Frontend) | Show user-friendly error if all retries fail |
+| Performance: coarse mesh for preview | P2 (Backend) | `angular_tolerance=0.3` for real-time, `0.05` for STEP download |
+
+**Exit Criteria:** 85%+ first-pass success on 20-prompt benchmark. Sliders update in <200ms.
+
+---
+
+#### Week 8 — Chat-to-Modify + Advanced Features
+**Goal:** Users can refine models via follow-up natural language.
+
+| Task | Owner | Details |
+|------|-------|---------|
+| Chat-to-Modify: "make holes larger", "add a fillet" | Lead (AI) | Pass previous code + new NL → LLM generates diff/update |
+| Conversation history context in API | Lead (AI) | `POST /api/modify` with `{script_id, previous_code, modification_prompt}` |
+| Chat UI component in frontend | P3 (Frontend) | Chat panel next to 3D viewer |
+| Model history (undo button) | P3 (Frontend) | Store last 5 model states client-side |
+| Material preview (basic) | P3 (Frontend) | Metal / plastic / wood shader in Three.js |
+
+**Exit Criteria:** User can generate a bracket, then say "make it 20% longer" and get an updated model.
+
+---
+
+### 🎨 PHASE 4: Frontend Polish + UX (Weeks 9–10)
+
+#### Week 9 — Professional UI/UX
+**Goal:** The interface should WOW judges at first glance.
+
+| Task | Owner | Details |
+|------|-------|---------|
+| Full UI redesign (dark theme, glassmorphism) | P3 (Frontend) | Split-panel: chat/sliders left, 3D viewer right |
+| Orbit controls, lighting, grid floor | P3 (Frontend) | React Three Fiber: OrbitControls, HDR lighting |
+| Dimension annotations on 3D model | P3 (Frontend) | Show bounding box dimensions as overlaid text |
+| STL / STEP / OBJ download panel | P3 (Frontend) | Download buttons with file size shown |
+| Mobile-responsive layout | P3 (Frontend) | Ensure tablet usability |
+| Prompt suggestion chips | P3 (Frontend) | "Try: bolt, bracket, enclosure, gear..." |
+
+---
+
+#### Week 10 — Optimization + Assembly Mode (Bonus)
+**Goal:** Performance tuning + stretch goal: simple assembly.
+
+| Task | Owner | Details |
+|------|-------|---------|
+| Benchmark full pipeline (target <3s end-to-end) | All | Profile bottlenecks |
+| Streaming response (show partial mesh early) | P2 (Backend) | FastAPI StreamingResponse for large models |
+| Share model via URL | P2 (Backend) | Short URL → loads saved model state |
+| Assembly mode (bonus) | Lead + P2 | Generate 2 parts that fit together, display as assembly |
+| Final API documentation | P2 (Backend) | Swagger + Postman collection |
+
+---
+
+### 🧪 PHASE 5: Testing + Deployment (Weeks 11–14)
+
+#### Week 11 — Comprehensive Testing
+| Task | Owner |
+|------|-------|
+| 50-prompt end-to-end benchmark | All |
+| RAG retrieval quality evaluation (precision@3) | Lead |
+| Load testing (10 concurrent users) | P2 |
+| Cross-browser frontend testing | P3 |
+| Fix all discovered bugs | All |
+
+#### Week 12 — Deployment + Documentation
+| Task | Owner |
+|------|-------|
+| Deploy backend on free tier (Render / Railway) | P2 |
+| Deploy frontend on Vercel | P3 |
+| Write technical report (system design chapter) | Lead |
+| API documentation finalization | P2 |
+| RAG evaluation metrics in report | Lead |
+
+#### Week 13 — Demo Preparation
+| Task | Owner |
+|------|-------|
+| Record demo video (backup for live demo) | All |
+| Prepare architecture diagrams (draw.io) | Lead |
+| Create 5 impressive demo prompts that always work | All |
+| Rehearse 10-minute live demonstration | All |
+
+#### Week 14 — Final Submission
+| Task | Owner |
+|------|-------|
+| Code freeze + final commit | All |
+| Submit report + codebase | All |
+| Live demonstration to panel | All |
+
+---
+
+## 🎯 3 Features That Will MOST Impress Judges
+
+### 1. 🔐 AST Security Sandbox
+> *"We don't blindly execute LLM code. Our AST validator whitelists only build123d, math, and typing imports before any execution."*
+
+This shows **engineering maturity** — most student projects ignore security entirely.
+
+### 2. 💬 Chat-to-Modify (Iterative NL Design)
+> *"Watch me say 'make the holes 2mm wider and add a 1mm fillet to all edges' — the model updates in 3 seconds."*
+
+This feels like magic to a non-technical audience. **Judges love live demos.**
+
+### 3. 📐 Dynamic Slider UI from LLM Output
+> *"The AI decided this part has 4 meaningful parameters. It generated the UI automatically — no hardcoding."*
+
+This demonstrates the **dual-output schema** is a genuine innovation, not just a chatbot wrapper.
+
+---
+
+## ⚠️ Top 3 Risks + Mitigation
+
+| Risk | Probability | Mitigation |
+|------|-------------|------------|
+| build123d topological failures on complex booleans | Medium | Restrict LLM to safe primitives in Week 4-5; add topology-specific correction hints |
+| Slider recompute >200ms on complex models | High | Coarse mesh (`angular_tolerance=0.3`) for preview; fine mesh only on download |
+| LLM generates hallucinated build123d functions | Medium | RAG few-shot examples prevent this; AST check catches bad imports |
+
+---
+
+## 📊 Success Metrics (For Final Report)
+
+| Metric | Target |
+|--------|--------|
+| First-pass LLM success rate | ≥ 85% |
+| Slider recomputation time | < 200ms |
+| End-to-end generation time | < 5 seconds |
+| RAG retrieval precision@3 | ≥ 0.75 |
+| Supported part types in RAG corpus | ≥ 100 |
+| Self-correction recovery rate | ≥ 90% of failures fixed within 3 retries |
+
+---
+
+## 👥 Team Responsibility Matrix
+
+| Week | Lead (AI/RAG) | Partner 2 (Backend/CAD) | Partner 3 (Frontend) |
+|------|---------------|------------------------|----------------------|
+| W4 | build123d prompts, 20 RAG examples, ChromaDB setup | build123d runner, AST sandbox | React+Vite scaffold, R3F static render |
+| W5 | 80 more examples, embedding pipeline, RAG retrieval | STEP/STL export optimization | Slider prototype, loading states |
+| W6 | RAG→LLM integration | API endpoints, download routes | Full pipeline connection, dynamic sliders |
+| W7 | Benchmarking, prompt tuning, RAG expansion | Error logging, mesh optimization | Error UI, performance |
+| W8 | Chat-to-Modify API | `/api/modify` endpoint | Chat UI, model history |
+| W9 | — | API docs | Full UI/UX redesign |
+| W10 | Assembly (bonus) | Streaming, share URL | Orbit controls, materials |
+| W11-14 | Testing, report | Deployment, load test | Cross-browser, demo prep |

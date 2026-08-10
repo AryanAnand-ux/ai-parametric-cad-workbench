@@ -12,3 +12,7 @@ numpy>=1.26.0
 httpx>=0.28.0
 pytest>=7.4.0
 pytest-asyncio>=0.23.0
+# Week 4 — CAD Engine + RAG
+build123d>=0.8.0
+chromadb>=0.5.0
+sentence-transformers>=3.0.0
