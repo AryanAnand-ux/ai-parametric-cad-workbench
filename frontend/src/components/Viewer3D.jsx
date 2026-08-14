@@ -55,9 +55,9 @@ function STLMesh({ url, onGeometryLoaded }) {
   return (
     <mesh geometry={geometry} castShadow receiveShadow>
       <meshStandardMaterial
-        color="#4f8ef7"
-        roughness={0.35}
-        metalness={0.65}
+        color="#3B82F6"
+        roughness={0.25}
+        metalness={0.4}
       />
     </mesh>
   );
@@ -110,28 +110,28 @@ export default function Viewer3D({ meshUrl }) {
       style={{ background: 'transparent' }}
     >
       {/* Lighting */}
-      <ambientLight intensity={0.35} />
+      <ambientLight intensity={0.45} />
       <directionalLight
         position={[50, 80, 50]}
-        intensity={1.5}
+        intensity={1.6}
         castShadow
         shadow-mapSize={[2048, 2048]}
       />
-      <directionalLight position={[-30, 40, -30]} intensity={0.6} color="#93c5fd" />
-      <pointLight position={[0, -40, 0]} intensity={0.4} color="#4f8ef7" />
+      <directionalLight position={[-30, 40, -30]} intensity={0.5} color="#cbd5e1" />
+      <pointLight position={[0, -40, 0]} intensity={0.3} color="#60a5fa" />
 
-      {/* Grid floor */}
+      {/* Studio Blueprint Grid floor */}
       <Grid
         position={[0, -0.01, 0]}
         args={[200, 200]}
         cellSize={5}
-        cellThickness={0.5}
-        cellColor="#1e2d4a"
+        cellThickness={1.2}
+        cellColor="#c7c2b2"
         sectionSize={20}
-        sectionThickness={1}
-        sectionColor="#2a3d5e"
-        fadeDistance={150}
-        fadeStrength={2}
+        sectionThickness={2}
+        sectionColor="#8c8573"
+        fadeDistance={200}
+        fadeStrength={1.5}
         infiniteGrid
       />
 

@@ -137,7 +137,7 @@ export default function App() {
         </div>
 
         <div className="header-actions">
-          <span style={{ fontSize: '11px', color: backendStatus === 'online' ? 'var(--success)' : 'var(--error)' }}>
+          <span className="status-pill" style={{ color: backendStatus === 'online' ? '#059669' : '#dc2626' }}>
             ● Backend {backendStatus}
           </span>
         </div>
@@ -183,27 +183,18 @@ export default function App() {
           </div>
 
           {/* Quick preset chips */}
-          <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <span className="sidebar-label" style={{ marginBottom: 0 }}>Try an example</span>
             {PRESET_PROMPTS.slice(0, 3).map((p, idx) => (
               <button
                 key={idx}
-                style={{
-                  textAlign: 'left',
-                  background: 'var(--bg-input)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text-secondary)',
-                  padding: '6px 10px',
-                  borderRadius: 'var(--radius-sm)',
-                  fontSize: '11px',
-                  cursor: 'pointer'
-                }}
+                className="preset-chip"
                 onClick={() => {
                   setPrompt(p);
                   handleGenerate(p);
                 }}
               >
-                {p}
+                ⚡ {p}
               </button>
             ))}
           </div>
@@ -290,10 +281,12 @@ export default function App() {
         {/* Empty State Overlay */}
         {!meshUrl && !loading && (
           <div className="viewer-empty">
-            <div className="viewer-empty-icon">🧊</div>
-            <div className="viewer-empty-title">Interactive 3D Workbench</div>
-            <div className="viewer-empty-sub">
-              Enter a prompt on the left or select a preset example to generate a parametric 3D CAD model.
+            <div className="viewer-empty-card">
+              <div className="viewer-empty-icon">🧊</div>
+              <div className="viewer-empty-title">Interactive 3D Workbench</div>
+              <div className="viewer-empty-sub">
+                Enter a natural language description on the left panel or select an example preset to generate parametric 3D CAD geometry.
+              </div>
             </div>
           </div>
         )}
@@ -301,12 +294,14 @@ export default function App() {
         {/* Loading Overlay */}
         {loading && (
           <div className="loading-overlay">
-            <div className="spinner" style={{ width: '32px', height: '32px', borderWidth: '3px' }} />
-            <div className="loading-title">Retrieving RAG Examples & Building Geometry...</div>
-            <div className="loading-dots">
-              <div className="loading-dot" />
-              <div className="loading-dot" />
-              <div className="loading-dot" />
+            <div className="loading-card">
+              <div className="spinner" style={{ width: '28px', height: '28px' }} />
+              <div className="loading-title">Retrieving RAG Examples & Building Solid Geometry...</div>
+              <div className="loading-dots">
+                <div className="loading-dot" />
+                <div className="loading-dot" />
+                <div className="loading-dot" />
+              </div>
             </div>
           </div>
         )}
