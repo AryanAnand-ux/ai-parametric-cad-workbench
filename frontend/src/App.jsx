@@ -11,7 +11,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Viewer3D from './components/Viewer3D';
 import ParameterSlider from './components/ParameterSlider';
-import { generatePart, recomputePart, healthCheck, STL_URL, STEP_URL } from './api';
+import { generatePart, recomputePart, healthCheck } from './api';
+
+// Build a full URL for file downloads (works via Vite proxy in dev)
+const fileUrl = (path) => path ? `${import.meta.env.VITE_API_URL || ''}${path}` : null;
 
 const PRESET_PROMPTS = [
   "A mounting bracket with four corner M5 holes",
@@ -251,7 +254,7 @@ export default function App() {
           <div className="viewer-toolbar">
             <a
               id="btn-download-stl"
-              href={STL_URL(meshUrl)}
+              href={fileUrl(meshUrl)}
               download={`${partName || 'part'}.stl`}
               className="toolbar-btn"
             >
@@ -260,7 +263,7 @@ export default function App() {
             {stepUrl && (
               <a
                 id="btn-download-step"
-                href={STEP_URL(stepUrl)}
+                href={fileUrl(stepUrl)}
                 download={`${partName || 'part'}.step`}
                 className="toolbar-btn"
               >

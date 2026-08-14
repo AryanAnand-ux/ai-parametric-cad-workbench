@@ -61,9 +61,9 @@ class DualOutputPayload(BaseModel):
     python_code: str = Field(
         ...,
         description=(
-            "Complete, executable Python script using the trimesh library only. "
+            "Complete, executable Python script using the build123d library. "
             "MUST begin with a PARAMS = {...} dictionary block. "
-            "MUST write the output STL mesh to the OUTPUT_STL variable provided by the runtime."
+            "MUST export the output to OUTPUT_STL and OUTPUT_STEP variables provided by the runtime."
         )
     )
     parameters: List[CADParameter] = Field(

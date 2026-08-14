@@ -1,15 +1,19 @@
 /**
  * api.js — API client for the CAD Workbench backend
- * Base URL auto-detects: dev server on :8000, same-origin in production
+ *
+ * In development: Vite proxies /api/* and /static/* to http://localhost:8000
+ * In production:  Set VITE_API_URL env var (e.g. https://your-backend.com)
  */
 
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Use empty string in dev (Vite proxy handles it).
+// In production, set VITE_API_URL in frontend/.env
+const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 90_000,  // 90s — LLM generation can be slow on first run
+  timeout: 120_000,   // 120s — LLM + build123d can be slow on cold start
 });
 
 /**
@@ -23,7 +27,7 @@ export async function generatePart(prompt) {
 }
 
 /**
- * Recompute a part with updated slider values (no LLM call — very fast).
+ * Recompute a part with updated slider values — no LLM call, very fast.
  * @param {string} scriptId
  * @param {string} pythonCode
  * @param {Record<string, number>} updatedParameters
@@ -46,6 +50,3 @@ export async function healthCheck() {
   const { data } = await api.get('/api/health');
   return data;
 }
-
-export const STL_URL = (path) => `${BASE_URL}${path}`;
-export const STEP_URL = (path) => `${BASE_URL}${path}`;

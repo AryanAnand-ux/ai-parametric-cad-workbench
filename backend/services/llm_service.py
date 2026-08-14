@@ -147,24 +147,24 @@ class LLMService:
         """
         errors = []
 
-        # --- Tier 1: Gemini 2.0 Flash ---
+        # --- Tier 1: Gemini 2.5 Flash ---
         try:
-            logger.info("[LLM] Calling Gemini 2.0 Flash (Tier 1)...")
-            raw = _call_gemini(prompt, system, model="gemini-2.0-flash")
-            logger.info(f"[LLM] Gemini 2.0 Flash responded ({len(raw)} chars)")
-            return raw, "gemini-2.0-flash"
-        except Exception as e:
-            errors.append(f"gemini-2.0-flash: {e}")
-            logger.warning(f"[LLM] Tier 1 failed: {e}")
-
-        # --- Tier 2: Gemini 2.5 Flash ---
-        try:
-            logger.info("[LLM] Calling Gemini 2.5 Flash (Tier 2)...")
+            logger.info("[LLM] Calling Gemini 2.5 Flash (Tier 1)...")
             raw = _call_gemini(prompt, system, model="gemini-2.5-flash")
             logger.info(f"[LLM] Gemini 2.5 Flash responded ({len(raw)} chars)")
             return raw, "gemini-2.5-flash"
         except Exception as e:
             errors.append(f"gemini-2.5-flash: {e}")
+            logger.warning(f"[LLM] Tier 1 failed: {e}")
+
+        # --- Tier 2: Gemini 1.5 Flash ---
+        try:
+            logger.info("[LLM] Calling Gemini 1.5 Flash (Tier 2)...")
+            raw = _call_gemini(prompt, system, model="gemini-1.5-flash")
+            logger.info(f"[LLM] Gemini 1.5 Flash responded ({len(raw)} chars)")
+            return raw, "gemini-1.5-flash"
+        except Exception as e:
+            errors.append(f"gemini-1.5-flash: {e}")
             logger.warning(f"[LLM] Tier 2 failed: {e}")
 
         # --- Tier 3: Groq Llama-3.3-70B ---
