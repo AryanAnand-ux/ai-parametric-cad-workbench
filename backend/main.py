@@ -152,15 +152,17 @@ async def generate_part(payload: GenerateRequest, background_tasks: BackgroundTa
             except Exception as correction_error:
                 logger.error(f"[SELF-CORRECT] Correction call failed: {correction_error}")
                 break
-        else:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "error": "CAD script execution failed after all self-correction attempts.",
-                    "self_correction_attempts": self_correction_attempts,
-                    "last_traceback": execution_result.get("stderr", "")[:500]
-                }
-            )
+
+    # If execution still failed after retries or early break, raise HTTPException
+    if not execution_result or execution_result.get("status") != "success":
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "CAD script execution failed after all self-correction attempts.",
+                "self_correction_attempts": self_correction_attempts,
+                "last_traceback": (execution_result.get("stderr", "") if execution_result else "")[:500]
+            }
+        )
 
     background_tasks.add_task(ArtifactCleanupManager.cleanup_old_artifacts, 86400)
 

@@ -138,7 +138,7 @@ class LLMService:
             logger.warning(f"[RAG] Failed to retrieve RAG examples: {e}")
             examples_block = ""
 
-        return BUILD123D_SYSTEM_PROMPT.format(rag_examples_block=examples_block)
+        return BUILD123D_SYSTEM_PROMPT.replace("{rag_examples_block}", examples_block)
 
     @classmethod
     def _call_with_fallback(cls, prompt: str, system: str) -> Tuple[str, str]:

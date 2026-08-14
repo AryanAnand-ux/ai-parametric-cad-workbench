@@ -47,11 +47,15 @@ export default function App() {
   // Debounce timer for slider recomputation
   const debounceTimerRef = useRef(null);
 
-  // Health check on mount
+  // Health check on mount + debounce timer cleanup on unmount
   useEffect(() => {
     healthCheck()
       .then((data) => setBackendStatus(data.status === 'online' ? 'online' : 'offline'))
       .catch(() => setBackendStatus('offline'));
+
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
   }, []);
 
   // Submit prompt -> /api/generate
@@ -107,8 +111,12 @@ export default function App() {
           setStepUrl(res.step_url);
           setMeshInfo(res.mesh_info || {});
           setRecompTime(res.recomputation_time_ms);
+          setError(null);
         } catch (err) {
           console.error('[Recompute error]', err);
+          const detail = err.response?.data?.detail;
+          const msg = typeof detail === 'string' ? detail : (detail?.error || err.message || 'Recomputation failed.');
+          setError(`Recomputation error: ${msg}`);
         } finally {
           setRecomputing(false);
         }
@@ -148,7 +156,10 @@ export default function App() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleGenerate();
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  if (!loading && prompt.trim()) handleGenerate();
+                }
               }}
             />
 

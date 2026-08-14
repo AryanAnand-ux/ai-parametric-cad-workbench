@@ -4,7 +4,7 @@
  * Features:
  *  - Loads STL files directly from the backend static endpoint
  *  - Orbit controls (drag to rotate, scroll to zoom, right-drag to pan)
- *  - Auto-fit camera to model bounding sphere on load
+ *  - Auto-fit camera strictly to the STL mesh bounding sphere (ignores grid floor)
  *  - Directional shadows, metallic material shader
  *  - Infinite grid floor
  */
@@ -17,12 +17,12 @@ import * as THREE from 'three';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inner mesh component — loads and renders one STL
-// Geometry stored in a ref to avoid stale-closure on cleanup
+// Passes geometry reference to CameraController for precise framing
 // ─────────────────────────────────────────────────────────────────────────────
 
-function STLMesh({ url }) {
+function STLMesh({ url, onGeometryLoaded }) {
   const [geometry, setGeometry] = useState(null);
-  const geoRef = useRef(null);    // ref so cleanup always sees latest geo
+  const geoRef = useRef(null);
 
   useEffect(() => {
     if (!url) return;
@@ -33,10 +33,10 @@ function STLMesh({ url }) {
       (geo) => {
         geo.computeVertexNormals();
         geo.center();
-        // Dispose old geometry before replacing
         if (geoRef.current) geoRef.current.dispose();
         geoRef.current = geo;
         setGeometry(geo);
+        if (onGeometryLoaded) onGeometryLoaded(geo);
       },
       undefined,
       (err) => console.error('[STLMesh] Load error:', err)
@@ -48,7 +48,7 @@ function STLMesh({ url }) {
         geoRef.current = null;
       }
     };
-  }, [url]);
+  }, [url, onGeometryLoaded]);
 
   if (!geometry) return null;
 
@@ -64,29 +64,26 @@ function STLMesh({ url }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Camera auto-fit: adjusts camera distance based on model bounding sphere
+// Camera auto-fit: calculates bounding sphere from the STL geometry alone
 // ─────────────────────────────────────────────────────────────────────────────
 
-function CameraController({ url }) {
-  const { camera, scene } = useThree();
+function CameraController({ loadedGeometry }) {
+  const { camera } = useThree();
 
   useEffect(() => {
-    if (!url) return;
+    if (!loadedGeometry) return;
 
-    const timeout = setTimeout(() => {
-      const box = new THREE.Box3().setFromObject(scene);
-      if (box.isEmpty()) return;
-      const sphere = box.getBoundingSphere(new THREE.Sphere());
-      const dist = Math.max(sphere.radius * 2.8, 10);
-      camera.position.set(dist, dist * 0.6, dist);
-      camera.lookAt(sphere.center);
-      camera.near = dist * 0.01;
-      camera.far = dist * 100;
-      camera.updateProjectionMatrix();
-    }, 150);
+    loadedGeometry.computeBoundingSphere();
+    const sphere = loadedGeometry.boundingSphere;
+    if (!sphere || sphere.radius <= 0) return;
 
-    return () => clearTimeout(timeout);
-  }, [url, camera, scene]);
+    const dist = Math.max(sphere.radius * 2.8, 15);
+    camera.position.set(dist, dist * 0.6, dist);
+    camera.lookAt(sphere.center);
+    camera.near = Math.max(0.1, dist * 0.01);
+    camera.far = dist * 100;
+    camera.updateProjectionMatrix();
+  }, [loadedGeometry, camera]);
 
   return null;
 }
@@ -96,12 +93,12 @@ function CameraController({ url }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Viewer3D({ meshUrl }) {
-  // When using the Vite dev proxy, /static/* is forwarded to backend.
-  // In production, set VITE_API_URL so STL_URL builds a full URL.
+  const [loadedGeometry, setLoadedGeometry] = useState(null);
+
   const fullUrl = meshUrl
     ? (import.meta.env.VITE_API_URL
         ? `${import.meta.env.VITE_API_URL}${meshUrl}`
-        : meshUrl)          // relative path works via Vite proxy in dev
+        : meshUrl)
     : null;
 
   return (
@@ -118,8 +115,7 @@ export default function Viewer3D({ meshUrl }) {
         position={[50, 80, 50]}
         intensity={1.5}
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize={[2048, 2048]}
       />
       <directionalLight position={[-30, 40, -30]} intensity={0.6} color="#93c5fd" />
       <pointLight position={[0, -40, 0]} intensity={0.4} color="#4f8ef7" />
@@ -143,9 +139,9 @@ export default function Viewer3D({ meshUrl }) {
       {fullUrl && (
         <Suspense fallback={null}>
           <Center>
-            <STLMesh url={fullUrl} />
+            <STLMesh url={fullUrl} onGeometryLoaded={setLoadedGeometry} />
           </Center>
-          <CameraController url={fullUrl} />
+          <CameraController loadedGeometry={loadedGeometry} />
         </Suspense>
       )}
 

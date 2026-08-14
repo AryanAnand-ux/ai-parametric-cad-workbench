@@ -12,13 +12,24 @@ export default function ParameterSlider({ param, value, onChange }) {
     onChange(param.name, parseFloat(e.target.value));
   };
 
-  const pct = ((value - param.min) / (param.max - param.min)) * 100;
+  // Safe percentage calculation — prevents NaN / Infinity if min === max
+  const range = param.max - param.min;
+  const pct = range <= 0 ? 0 : Math.max(0, Math.min(100, ((value - param.min) / range) * 100));
+
+  // Dynamic decimal places based on step precision
+  const decimals = Number.isInteger(param.step)
+    ? 0
+    : (param.step.toString().split('.')[1]?.length || 1);
+
+  const displayVal = typeof value === 'number' && !isNaN(value)
+    ? value.toFixed(decimals)
+    : param.default;
 
   return (
     <div className="param-item">
       <div className="param-header">
         <span className="param-label">{param.label}</span>
-        <span className="param-value">{value.toFixed(param.step < 1 ? 1 : 0)} mm</span>
+        <span className="param-value">{displayVal} mm</span>
       </div>
 
       <input
