@@ -24,7 +24,7 @@ load_dotenv()
 
 from schemas import DualOutputPayload, CADParameter
 from services.llm_service import LLMService
-from services.freecad_runner import CADRunner
+from services.cad_runner import CADRunner
 from config import MODELS_DIR
 
 
@@ -33,7 +33,7 @@ def test_1_schema_validation():
     print("\n[1/5] Testing Pydantic Schema Validation...")
 
     valid_data = {
-        "python_code": "PARAMS = {'length': 30.0}\nimport trimesh\nmesh = trimesh.creation.box(extents=[30,20,10])\nmesh.export(OUTPUT_STL)",
+        "python_code": "PARAMS = {'length': 30.0, 'width': 20.0, 'height': 10.0}\nfrom build123d import *\nwith BuildPart() as part:\n    Box(PARAMS['length'], PARAMS['width'], PARAMS['height'])\nexport_stl(part.part, OUTPUT_STL)",
         "parameters": [
             {
                 "name": "length",
@@ -62,7 +62,7 @@ def test_2_llm_response_parsing():
     print("\n[2/5] Testing LLM Response Parser...")
 
     sample_json = json.dumps({
-        "python_code": "PARAMS = {'radius': 15.0}\nimport trimesh\nmesh = trimesh.creation.cylinder(radius=PARAMS['radius'], height=30)\nmesh.export(OUTPUT_STL)",
+        "python_code": "PARAMS = {'radius': 15.0, 'height': 30.0}\nfrom build123d import *\nwith BuildPart() as part:\n    Cylinder(radius=PARAMS['radius'], height=PARAMS['height'])\nexport_stl(part.part, OUTPUT_STL)\nexport_step(part.part, OUTPUT_STEP)",
         "parameters": [
             {
                 "name": "radius",
@@ -151,9 +151,11 @@ def test_4_parameter_injection():
     "width": 20.0
 }
 
-import trimesh
-mesh = trimesh.creation.box(extents=[PARAMS["length"], PARAMS["width"], 10])
-mesh.export(OUTPUT_STL)
+from build123d import *
+with BuildPart() as part:
+    Box(PARAMS["length"], PARAMS["width"], 10)
+export_stl(part.part, OUTPUT_STL)
+export_step(part.part, OUTPUT_STEP)
 """
     updated_params = {"length": 75.0, "width": 45.0}
     updated_code = CADRunner.inject_parameters(original_code, updated_params)

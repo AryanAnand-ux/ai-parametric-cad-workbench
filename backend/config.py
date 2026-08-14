@@ -11,11 +11,11 @@ MODELS_DIR = TEMP_DIR / "models"
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-# FreeCAD / CadQuery Configuration
-# PYTHON_EXEC: cross-platform venv python path
+# Python executable: prefer the venv interpreter when present,
+# fall back to sys.executable so Docker / CI environments work without a venv.
 _venv_python = BASE_DIR / "venv" / ("Scripts" if sys.platform == "win32" else "bin") / "python"
-FREECAD_CMD = os.getenv("FREECAD_CMD", "FreeCADCmd")
-PYTHON_EXEC = os.getenv("PYTHON_EXEC", str(_venv_python))
+_default_python = str(_venv_python) if _venv_python.exists() else sys.executable
+PYTHON_EXEC = os.getenv("PYTHON_EXEC", _default_python)
 
 # API & Server Configuration
 PORT = int(os.getenv("PORT", "8000"))

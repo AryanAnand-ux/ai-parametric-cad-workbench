@@ -77,15 +77,55 @@ def validate_script_safety(python_code: str) -> tuple[bool, str]:
 # Parameter Injection
 # ---------------------------------------------------------------------------
 
+def _find_params_block(code: str) -> tuple[int, int] | None:
+    """
+    Finds the start and end indices of the PARAMS = {...} block using
+    brace-counting rather than regex, so nested braces / comments inside
+    the dict are handled correctly.
+
+    Returns (start_idx, end_idx) of the full `PARAMS = { ... }` expression,
+    or None if not found.
+    """
+    match = re.search(r"PARAMS\s*=\s*\{", code)
+    if not match:
+        return None
+
+    brace_start = match.end() - 1   # position of the opening '{'
+    depth = 0
+    in_single = False
+    in_double = False
+    i = brace_start
+
+    while i < len(code):
+        ch = code[i]
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+        elif not in_single and not in_double:
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    return (match.start(), i + 1)   # inclusive end
+        i += 1
+
+    return None   # unbalanced braces — fall back
+
+
 def inject_parameters(python_code: str, parameters: Dict[str, Any]) -> str:
     """
     Replaces the PARAMS = {...} block with updated values.
-    Uses re.DOTALL to correctly handle multi-line dicts.
+    Uses a brace-counting parser so nested braces inside the dict
+    (or a `}` in a comment) do not cause early truncation.
     """
     params_str = f"PARAMS = {json.dumps(parameters, indent=4)}"
-    pattern = r"PARAMS\s*=\s*\{.*?\}"
-    if re.search(pattern, python_code, re.DOTALL):
-        return re.sub(pattern, params_str, python_code, count=1, flags=re.DOTALL)
+    span = _find_params_block(python_code)
+    if span:
+        start, end = span
+        return python_code[:start] + params_str + python_code[end:]
+    # PARAMS block not found — prepend it
     return f"{params_str}\n\n{python_code}"
 
 

@@ -20,7 +20,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from services.cad_runner import CADRunner, validate_script_safety
-from config import MODELS_DIR
 
 
 SIMPLE_BOX_SCRIPT = '''

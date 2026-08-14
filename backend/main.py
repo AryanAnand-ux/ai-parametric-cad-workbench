@@ -19,7 +19,6 @@ from schemas import (
     RecomputeRequest, RecomputeResponse
 )
 from services.cad_runner import CADRunner
-from services.exporter import GeometryExporter
 from services.cleanup import ArtifactCleanupManager
 from services.llm_service import LLMService
 from services.rag_service import RAGService

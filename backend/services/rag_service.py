@@ -101,17 +101,18 @@ class RAGService:
     @staticmethod
     def build_index(force_rebuild: bool = False) -> int:
         """
-        Embeds all examples from the corpus and stores them in ChromaDB.
+        Embeds all examples from the corpus (all weeks) and stores in ChromaDB.
         Skips examples already indexed (by ID) unless force_rebuild=True.
-
         Returns: number of new documents added.
         """
-        from rag_corpus.examples_week4 import EXAMPLES
+        # Load all corpus modules — add new week modules here as they are created
+        from rag_corpus.examples_week4 import EXAMPLES as W4
+        from rag_corpus.examples_week5 import EXAMPLES as W5
+        ALL_EXAMPLES = W4 + W5
 
         collection = _get_collection()
 
         if force_rebuild:
-            # Delete existing collection and recreate
             import chromadb
             client = chromadb.PersistentClient(path=str(CHROMA_DIR))
             try:
@@ -126,15 +127,14 @@ class RAGService:
 
         # Check which IDs are already indexed
         existing_ids = set(collection.get()["ids"])
-        new_examples = [ex for ex in EXAMPLES if ex["id"] not in existing_ids]
+        new_examples = [ex for ex in ALL_EXAMPLES if ex["id"] not in existing_ids]
 
         if not new_examples:
-            logger.info(f"[RAG] All {len(EXAMPLES)} examples already indexed. Skipping.")
+            logger.info(f"[RAG] All {len(ALL_EXAMPLES)} examples already indexed. Skipping.")
             return 0
 
-        logger.info(f"[RAG] Embedding {len(new_examples)} new examples...")
+        logger.info(f"[RAG] Embedding {len(new_examples)} new examples (total corpus: {len(ALL_EXAMPLES)})...")
 
-        # Build texts to embed: combine description + tags for richer retrieval
         texts_to_embed = [
             f"{ex['description']}. Tags: {', '.join(ex['tags'])}"
             for ex in new_examples
@@ -152,7 +152,7 @@ class RAGService:
             } for ex in new_examples]
         )
 
-        logger.info(f"[RAG] Successfully indexed {len(new_examples)} examples.")
+        logger.info(f"[RAG] Successfully indexed {len(new_examples)} new examples. Total: {len(ALL_EXAMPLES)}.")
         return len(new_examples)
 
     @staticmethod
