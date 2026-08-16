@@ -13,7 +13,7 @@ const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 120_000,   // 120s — LLM + build123d can be slow on cold start
+  timeout: 180_000,   // 180s (3 min) — accommodates multi-retry LLM self-correction loops
 });
 
 /**
@@ -48,5 +48,26 @@ export async function recomputePart(scriptId, pythonCode, updatedParameters) {
  */
 export async function healthCheck() {
   const { data } = await api.get('/api/health');
+  return data;
+}
+
+/**
+ * Modify an existing CAD part via a natural language change request.
+ * Calls POST /api/modify — LLM edits the script, preserving PARAMS where possible.
+ * @param {string} scriptId - Current script_id
+ * @param {string} pythonCode - Current build123d Python script
+ * @param {string} partName - Current part name for context
+ * @param {string} modificationPrompt - Natural language description of the change
+ * @param {Array} parameters - Current CADParameter array for context preservation
+ * @returns {Promise<ModifyResponse>}
+ */
+export async function modifyPart(scriptId, pythonCode, partName, modificationPrompt, parameters = []) {
+  const { data } = await api.post('/api/modify', {
+    script_id: scriptId,
+    python_code: pythonCode,
+    part_name: partName,
+    modification_prompt: modificationPrompt,
+    parameters,
+  });
   return data;
 }

@@ -108,7 +108,8 @@ class RAGService:
         # Load all corpus modules — add new week modules here as they are created
         from rag_corpus.examples_week4 import EXAMPLES as W4
         from rag_corpus.examples_week5 import EXAMPLES as W5
-        ALL_EXAMPLES = W4 + W5
+        from rag_corpus.examples_week8 import EXAMPLES as W8
+        ALL_EXAMPLES = W4 + W5 + W8
 
         collection = _get_collection()
 
@@ -156,12 +157,14 @@ class RAGService:
         return len(new_examples)
 
     @staticmethod
-    def retrieve(query: str, k: int = 3) -> List[Dict[str, Any]]:
+    def retrieve(query: str, k: int = 3, min_similarity: float = 0.25) -> List[Dict[str, Any]]:
         """
         Retrieves the top-k most similar CAD examples for a given user query.
+        Filters out matches below min_similarity threshold to avoid injecting
+        irrelevant/misleading few-shot code into the system prompt.
 
         Returns list of dicts:
-            {"description": str, "code": str, "similarity": float}
+            {"description": str, "code": str, "tags": str, "similarity": float}
         """
         collection = _get_collection()
 
@@ -181,17 +184,24 @@ class RAGService:
         for i in range(len(results["ids"][0])):
             distance = results["distances"][0][i]
             similarity = 1.0 - distance   # cosine distance → similarity
-            retrieved.append({
-                "description": results["documents"][0][i],
-                "code": results["metadatas"][0][i]["code"],
-                "similarity": round(similarity, 4)
-            })
+            if similarity >= min_similarity:
+                meta = results["metadatas"][0][i]
+                retrieved.append({
+                    "description": results["documents"][0][i],
+                    "code": meta.get("code", ""),
+                    "tags": meta.get("tags", ""),
+                    "similarity": round(similarity, 4)
+                })
 
-        logger.info(
-            f"[RAG] Query: '{query[:50]}...' → "
-            f"top match: '{retrieved[0]['description'][:50]}' "
-            f"(sim={retrieved[0]['similarity']})"
-        )
+        if retrieved:
+            logger.info(
+                f"[RAG] Query: '{query[:50]}...' → "
+                f"top match: '{retrieved[0]['description'][:50]}' "
+                f"(sim={retrieved[0]['similarity']}) | returned {len(retrieved)}/{k} matches"
+            )
+        else:
+            logger.info(f"[RAG] Query: '{query[:50]}...' → no matches above min_similarity={min_similarity}")
+
         return retrieved
 
     @staticmethod
@@ -204,8 +214,9 @@ class RAGService:
 
         blocks = []
         for i, ex in enumerate(examples, 1):
+            tag_str = f" (Tags: {ex['tags']})" if ex.get('tags') else ""
             blocks.append(
-                f"## Similar Example {i}: {ex['description']}\n"
+                f"## Similar Example {i}: {ex['description']}{tag_str}\n"
                 f"```python\n{ex['code'].strip()}\n```"
             )
         return "\n\n".join(blocks)

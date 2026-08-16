@@ -42,3 +42,12 @@ frontend/node_modules/
 frontend/dist/
 frontend/.cache/
 frontend/build/
+
+# ChromaDB Vector Store (auto-rebuilt on startup from corpus files)
+backend/rag_corpus/chroma_db/
+
+# Static Model Output (generated at runtime, not source code)
+backend/static/
+
+# Scratch / Temp Directories
+scratch/

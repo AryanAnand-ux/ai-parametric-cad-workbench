@@ -12,6 +12,10 @@ export default function ParameterSlider({ param, value, onChange }) {
     onChange(param.name, parseFloat(e.target.value));
   };
 
+  const handleReset = () => {
+    onChange(param.name, param.default);
+  };
+
   // Safe percentage calculation — prevents NaN / Infinity if min === max
   const range = param.max - param.min;
   const pct = range <= 0 ? 0 : Math.max(0, Math.min(100, ((value - param.min) / range) * 100));
@@ -25,11 +29,35 @@ export default function ParameterSlider({ param, value, onChange }) {
     ? value.toFixed(decimals)
     : param.default;
 
+  // Unit formatting: use explicit schema unit if provided, otherwise fallback to heuristics
+  let unit = '';
+  if (param.unit) {
+    unit = (param.unit === 'deg' || param.unit === '°') ? '°' : (param.unit === 'mm' ? ' mm' : ` ${param.unit}`);
+  } else {
+    const lowerName = param.name.toLowerCase();
+    unit = lowerName.includes('angle') || lowerName.includes('deg')
+      ? '°'
+      : (lowerName.includes('count') || lowerName.includes('num') || param.type === 'integer' ? '' : ' mm');
+  }
+
+  const isModified = value !== param.default;
+
   return (
     <div className="param-item">
       <div className="param-header">
         <span className="param-label">{param.label}</span>
-        <span className="param-value">{displayVal} mm</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span className="param-value">{displayVal}{unit}</span>
+          {isModified && (
+            <button
+              onClick={handleReset}
+              className="param-reset-btn"
+              title="Reset parameter to default value"
+            >
+              ↺
+            </button>
+          )}
+        </div>
       </div>
 
       <input

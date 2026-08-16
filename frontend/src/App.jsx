@@ -11,7 +11,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Viewer3D from './components/Viewer3D';
 import ParameterSlider from './components/ParameterSlider';
-import { generatePart, recomputePart, healthCheck } from './api';
+import { generatePart, recomputePart, healthCheck, modifyPart } from './api';
 
 // Build a full URL for file downloads (works via Vite proxy in dev)
 const fileUrl = (path) => path ? `${import.meta.env.VITE_API_URL || ''}${path}` : null;
@@ -44,6 +44,17 @@ export default function App() {
   const [modelUsed, setModelUsed] = useState(null);
   const [backendStatus, setBackendStatus] = useState('checking');
 
+  // UI Toggle States
+  const [wireframe, setWireframe] = useState(false);
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const viewerRef = useRef(null);
+
+  // Chat-to-Modify state
+  const [chatHistory, setChatHistory] = useState([]);
+  const [modifyPrompt, setModifyPrompt] = useState('');
+  const [modifying, setModifying] = useState(false);
+  const chatEndRef = useRef(null);
+
   // Debounce timer for slider recomputation
   const debounceTimerRef = useRef(null);
 
@@ -58,6 +69,23 @@ export default function App() {
     };
   }, []);
 
+  // Apply full response from generate OR modify to shared state
+  const applyPartResponse = (res) => {
+    setScriptId(res.script_id);
+    setPartName(res.part_name);
+    setDescription(res.description);
+    setPythonCode(res.python_code);
+    setParameters(res.parameters || []);
+    setMeshUrl(res.mesh_url);
+    setStepUrl(res.step_url);
+    setMeshInfo(res.mesh_info || {});
+    setRecompTime(res.recomputation_time_ms);
+    setModelUsed(res.model_used);
+    const initialValues = {};
+    (res.parameters || []).forEach((p) => { initialValues[p.name] = p.default; });
+    setParamValues(initialValues);
+  };
+
   // Submit prompt -> /api/generate
   const handleGenerate = async (overridePrompt) => {
     const activePrompt = overridePrompt || prompt;
@@ -65,32 +93,56 @@ export default function App() {
 
     setLoading(true);
     setError(null);
+    setChatHistory([]); // Reset chat on new generation
 
     try {
       const res = await generatePart(activePrompt);
-      setScriptId(res.script_id);
-      setPartName(res.part_name);
-      setDescription(res.description);
-      setPythonCode(res.python_code);
-      setParameters(res.parameters || []);
-      setMeshUrl(res.mesh_url);
-      setStepUrl(res.step_url);
-      setMeshInfo(res.mesh_info || {});
-      setRecompTime(res.recomputation_time_ms);
-      setModelUsed(res.model_used);
-
-      // Initialize slider values from returned defaults
-      const initialValues = {};
-      (res.parameters || []).forEach((p) => {
-        initialValues[p.name] = p.default;
-      });
-      setParamValues(initialValues);
+      applyPartResponse(res);
     } catch (err) {
       console.error('[Generate error]', err);
       const detail = err.response?.data?.detail;
       setError(typeof detail === 'string' ? detail : err.message || 'Generation failed.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Chat-to-Modify -> /api/modify
+  const handleModify = async () => {
+    if (!modifyPrompt.trim() || modifying || !scriptId || !pythonCode) return;
+    const msg = modifyPrompt.trim();
+    setModifyPrompt('');
+    setModifying(true);
+    setError(null);
+
+    // Append user message immediately
+    setChatHistory((prev) => [...prev, { role: 'user', text: msg }]);
+
+    try {
+      const res = await modifyPart(scriptId, pythonCode, partName || 'Part', msg, parameters);
+      applyPartResponse(res);
+      // Append assistant success message
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: `✅ Applied: "${msg}" — Part updated to ${res.part_name}.`,
+          model: res.model_used,
+        },
+      ]);
+    } catch (err) {
+      console.error('[Modify error]', err);
+      const detail = err.response?.data?.detail;
+      const msg2 = typeof detail === 'string' ? detail : (detail?.error || err.message || 'Modification failed.');
+      setError(`Modify error: ${msg2}`);
+      setChatHistory((prev) => [
+        ...prev,
+        { role: 'assistant', text: `❌ Failed: ${msg2}`, isError: true },
+      ]);
+    } finally {
+      setModifying(false);
+      // Scroll chat to bottom
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
     }
   };
 
@@ -131,9 +183,9 @@ export default function App() {
       {/* ── HEADER ──────────────────────────────────────────────── */}
       <header className="header">
         <div className="header-logo">
-          <div className="header-logo-icon">⚙️</div>
+          <span>⚙️</span>
           <span>AI CAD Workbench</span>
-          <span className="header-badge">WEEK 5 — BUILD123D + RAG</span>
+          <span className="header-badge">WEEK 7 — CHAT-TO-MODIFY</span>
         </div>
 
         <div className="header-actions">
@@ -202,8 +254,22 @@ export default function App() {
 
         {/* Parameters Sliders Section */}
         <div className="params-scroll">
-          <div className="sidebar-label">
-            Parametric Controls {recomputing && <span style={{ color: 'var(--accent)', marginLeft: '6px' }}>(updating...)</span>}
+          <div className="sidebar-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Parametric Controls {recomputing && <span style={{ color: 'var(--accent-purple)', marginLeft: '6px' }}>(updating...)</span>}</span>
+            {parameters.length > 0 && (
+              <button
+                className="preset-chip"
+                style={{ padding: '3px 8px', fontSize: '10px' }}
+                onClick={() => {
+                  const resetVals = {};
+                  parameters.forEach(p => { resetVals[p.name] = p.default; });
+                  setParamValues(resetVals);
+                }}
+                title="Reset all sliders to initial defaults"
+              >
+                ↺ Reset All
+              </button>
+            )}
           </div>
 
           {parameters.length === 0 ? (
@@ -239,6 +305,65 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* ── CHAT-TO-MODIFY PANEL ─────────────────────────────── */}
+        {scriptId && (
+          <div className="chat-panel">
+            <div className="sidebar-label" style={{ marginBottom: '10px' }}>
+              💬 Chat to Modify
+              <span style={{ fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 500, color: 'var(--text-secondary)', marginLeft: '8px' }}>
+                Refine the part with natural language
+              </span>
+            </div>
+
+            {/* Chat History */}
+            {chatHistory.length > 0 && (
+              <div className="chat-history">
+                {chatHistory.map((msg, i) => (
+                  <div
+                    key={i}
+                    className={`chat-bubble chat-bubble--${msg.role}${msg.isError ? ' chat-bubble--error' : ''}`}
+                  >
+                    <span className="chat-bubble-role">{msg.role === 'user' ? '👤 You' : '🤖 AI'}</span>
+                    <span className="chat-bubble-text">{msg.text}</span>
+                    {msg.model && (
+                      <span className="chat-bubble-meta">{msg.model}</span>
+                    )}
+                  </div>
+                ))}
+                <div ref={chatEndRef} />
+              </div>
+            )}
+
+            {/* Chat Input */}
+            <div className="chat-input-row">
+              <textarea
+                className="chat-textarea"
+                placeholder='e.g. "Make the walls 2mm thicker" or "Add a chamfer to top edges"'
+                value={modifyPrompt}
+                rows={2}
+                onChange={(e) => setModifyPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    handleModify();
+                  }
+                }}
+                disabled={modifying}
+              />
+              <button
+                className="chat-send-btn"
+                onClick={handleModify}
+                disabled={modifying || !modifyPrompt.trim()}
+                title="Send modification request (Ctrl+Enter)"
+              >
+                {modifying ? (
+                  <><div className="spinner" style={{ width: '12px', height: '12px' }} /> Modifying...</>
+                ) : '✨ Apply'}
+              </button>
+            </div>
+          </div>
+        )}
       </aside>
 
       {/* ── VIEWER AREA ────────────────────────────────────────── */}
@@ -251,16 +376,39 @@ export default function App() {
           </div>
         )}
 
-        {/* Download Buttons */}
+        {/* Download & View Controls Toolbar */}
         {meshUrl && (
           <div className="viewer-toolbar">
+            <button
+              onClick={() => setWireframe(!wireframe)}
+              className="toolbar-btn"
+              title="Toggle Mesh Wireframe Mode"
+            >
+              {wireframe ? '🟦 Solid Mode' : '🌐 Wireframe'}
+            </button>
+            {pythonCode && (
+              <button
+                onClick={() => setShowCodeModal(true)}
+                className="toolbar-btn"
+                title="Inspect Generated Python CAD Script"
+              >
+                💻 Python Code
+              </button>
+            )}
+            <button
+              onClick={() => viewerRef.current?.resetView()}
+              className="toolbar-btn"
+              title="Reset 3D Camera View"
+            >
+              🎥 Reset View
+            </button>
             <a
               id="btn-download-stl"
               href={fileUrl(meshUrl)}
               download={`${partName || 'part'}.stl`}
               className="toolbar-btn"
             >
-              📥 Download STL
+              📥 STL
             </a>
             {stepUrl && (
               <a
@@ -269,14 +417,14 @@ export default function App() {
                 download={`${partName || 'part'}.step`}
                 className="toolbar-btn"
               >
-                📐 Download STEP
+                📐 STEP
               </a>
             )}
           </div>
         )}
 
         {/* 3D WebGL Canvas */}
-        <Viewer3D meshUrl={meshUrl} loading={loading} />
+        <Viewer3D ref={viewerRef} meshUrl={meshUrl} wireframe={wireframe} loading={loading} />
 
         {/* Empty State Overlay */}
         {!meshUrl && !loading && (
@@ -326,6 +474,33 @@ export default function App() {
                 <span className="mesh-stat-key">Volume</span>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Python Code Inspection Modal */}
+        {showCodeModal && pythonCode && (
+          <div className="modal-backdrop" onClick={() => setShowCodeModal(false)}>
+            <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <span className="modal-title">💻 Generated build123d Python Script ({scriptId})</span>
+                <button className="modal-close-btn" onClick={() => setShowCodeModal(false)}>✕</button>
+              </div>
+              <pre className="modal-code"><code>{pythonCode}</code></pre>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  className="toolbar-btn"
+                  onClick={() => {
+                    navigator.clipboard.writeText(pythonCode);
+                    alert('Python CAD code copied to clipboard!');
+                  }}
+                >
+                  📋 Copy Code
+                </button>
+                <button className="toolbar-btn" onClick={() => setShowCodeModal(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </main>

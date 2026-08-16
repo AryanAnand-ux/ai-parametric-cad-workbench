@@ -2,14 +2,15 @@
  * Viewer3D.jsx — React Three Fiber 3D STL Viewer
  *
  * Features:
- *  - Loads STL files directly from the backend static endpoint
+ *  - Loads STL files directly from backend static endpoint
  *  - Orbit controls (drag to rotate, scroll to zoom, right-drag to pan)
- *  - Auto-fit camera strictly to the STL mesh bounding sphere (ignores grid floor)
+ *  - Auto-fit camera strictly to the STL mesh bounding sphere
+ *  - Supports Solid / Wireframe render modes
  *  - Directional shadows, metallic material shader
- *  - Infinite grid floor
+ *  - Studio blueprint grid floor
  */
 
-import { Suspense, useRef, useEffect, useState } from 'react';
+import { Suspense, useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Grid, Center } from '@react-three/drei';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
@@ -17,10 +18,9 @@ import * as THREE from 'three';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inner mesh component — loads and renders one STL
-// Passes geometry reference to CameraController for precise framing
 // ─────────────────────────────────────────────────────────────────────────────
 
-function STLMesh({ url, onGeometryLoaded }) {
+function STLMesh({ url, wireframe, onGeometryLoaded, onError }) {
   const [geometry, setGeometry] = useState(null);
   const geoRef = useRef(null);
 
@@ -39,7 +39,10 @@ function STLMesh({ url, onGeometryLoaded }) {
         if (onGeometryLoaded) onGeometryLoaded(geo);
       },
       undefined,
-      (err) => console.error('[STLMesh] Load error:', err)
+      (err) => {
+        console.error('[STLMesh] Load error:', err);
+        if (onError) onError(err);
+      }
     );
 
     return () => {
@@ -48,7 +51,7 @@ function STLMesh({ url, onGeometryLoaded }) {
         geoRef.current = null;
       }
     };
-  }, [url, onGeometryLoaded]);
+  }, [url, onGeometryLoaded, onError]);
 
   if (!geometry) return null;
 
@@ -58,42 +61,63 @@ function STLMesh({ url, onGeometryLoaded }) {
         color="#3B82F6"
         roughness={0.25}
         metalness={0.4}
+        wireframe={wireframe}
       />
     </mesh>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Camera auto-fit: calculates bounding sphere from the STL geometry alone
+// Camera auto-fit: computes exact distance from vertical FOV trigonometry
+// Formula: distance = (sphere.radius / sin(vertical_FOV / 2)) * safety_margin
 // ─────────────────────────────────────────────────────────────────────────────
 
-function CameraController({ loadedGeometry }) {
-  const { camera } = useThree();
+const CameraController = forwardRef(function CameraController({ loadedGeometry }, ref) {
+  const { camera, controls } = useThree();
 
-  useEffect(() => {
+  const resetCamera = () => {
     if (!loadedGeometry) return;
-
     loadedGeometry.computeBoundingSphere();
     const sphere = loadedGeometry.boundingSphere;
     if (!sphere || sphere.radius <= 0) return;
 
-    const dist = Math.max(sphere.radius * 2.8, 15);
+    // Exact trigonometric camera distance based on vertical Field of View
+    const fovRad = (camera.fov * Math.PI) / 180;
+    const trigDistance = (sphere.radius / Math.sin(fovRad / 2)) * 1.25; // 1.25 margin factor
+    const dist = Math.max(trigDistance, 15);
+
     camera.position.set(dist, dist * 0.6, dist);
     camera.lookAt(sphere.center);
+    if (controls) controls.target.copy(sphere.center);
     camera.near = Math.max(0.1, dist * 0.01);
     camera.far = dist * 100;
     camera.updateProjectionMatrix();
-  }, [loadedGeometry, camera]);
+  };
+
+  useImperativeHandle(ref, () => ({
+    resetView: resetCamera
+  }));
+
+  useEffect(() => {
+    resetCamera();
+  }, [loadedGeometry]);
 
   return null;
-}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Viewer Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function Viewer3D({ meshUrl }) {
+const Viewer3D = forwardRef(function Viewer3D({ meshUrl, wireframe = false }, ref) {
   const [loadedGeometry, setLoadedGeometry] = useState(null);
+  const cameraCtrlRef = useRef(null);
+
+  useImperativeHandle(ref, () => ({
+    resetView: () => {
+      if (cameraCtrlRef.current) cameraCtrlRef.current.resetView();
+    }
+  }));
 
   const fullUrl = meshUrl
     ? (import.meta.env.VITE_API_URL
@@ -139,9 +163,9 @@ export default function Viewer3D({ meshUrl }) {
       {fullUrl && (
         <Suspense fallback={null}>
           <Center>
-            <STLMesh url={fullUrl} onGeometryLoaded={setLoadedGeometry} />
+            <STLMesh url={fullUrl} wireframe={wireframe} onGeometryLoaded={setLoadedGeometry} />
           </Center>
-          <CameraController loadedGeometry={loadedGeometry} />
+          <CameraController ref={cameraCtrlRef} loadedGeometry={loadedGeometry} />
         </Suspense>
       )}
 
@@ -156,4 +180,6 @@ export default function Viewer3D({ meshUrl }) {
       />
     </Canvas>
   );
-}
+});
+
+export default Viewer3D;

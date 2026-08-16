@@ -16,7 +16,8 @@ load_dotenv()
 from config import MODELS_DIR, PORT, HOST, GEMINI_API_KEY
 from schemas import (
     GenerateRequest, GenerateResponse,
-    RecomputeRequest, RecomputeResponse
+    RecomputeRequest, RecomputeResponse,
+    ModifyRequest, ModifyResponse,
 )
 from services.cad_runner import CADRunner
 from services.cleanup import ArtifactCleanupManager
@@ -105,9 +106,11 @@ async def generate_part(payload: GenerateRequest, background_tasks: BackgroundTa
     prompt_preview = payload.prompt[:60] + ("..." if len(payload.prompt) > 60 else "")
     logger.info(f"[GENERATE] script_id={script_id} | prompt='{prompt_preview}'")
 
-    # Step 1: LLM Dual-Output Generation (3-tier fallback)
+    # Step 1: LLM Dual-Output Generation (3-tier fallback, run non-blocking in thread pool)
     try:
-        dual_output, model_used = LLMService.generate_dual_output(payload.prompt)
+        dual_output, model_used = await asyncio.to_thread(
+            LLMService.generate_dual_output, payload.prompt
+        )
     except Exception as e:
         raise HTTPException(
             status_code=502,
@@ -129,19 +132,26 @@ async def generate_part(payload: GenerateRequest, background_tasks: BackgroundTa
             python_code=current_code
         )
 
-        if execution_result["status"] == "success":
+        is_geo_valid = execution_result.get("mesh_info", {}).get("is_valid", True)
+        if execution_result["status"] == "success" and is_geo_valid:
             break
 
         if attempt < LLMService.MAX_RETRIES:
             self_correction_attempts += 1
-            traceback_text = execution_result.get("stderr", "Unknown execution error")
+            if execution_result["status"] != "success":
+                traceback_text = execution_result.get("stderr", "Unknown execution error")
+            else:
+                warnings = execution_result.get("mesh_info", {}).get("geometry_warnings", [])
+                traceback_text = "GEOMETRY TOPOLOGY VALIDATION FAILURE:\n" + "\n".join(warnings)
+
             logger.warning(
                 f"[SELF-CORRECT] Attempt {self_correction_attempts}/{LLMService.MAX_RETRIES} "
-                f"for script_id={script_id}"
+                f"for script_id={script_id} | reason={traceback_text[:120].strip()!r}"
             )
 
             try:
-                corrected, model_used = LLMService.correct_code(
+                corrected, model_used = await asyncio.to_thread(
+                    LLMService.correct_code,
                     user_prompt=payload.prompt,
                     failed_code=current_code,
                     error_traceback=traceback_text
@@ -154,13 +164,15 @@ async def generate_part(payload: GenerateRequest, background_tasks: BackgroundTa
                 break
 
     # If execution still failed after retries or early break, raise HTTPException
-    if not execution_result or execution_result.get("status") != "success":
+    is_geo_valid = execution_result.get("mesh_info", {}).get("is_valid", True) if execution_result else False
+    if not execution_result or execution_result.get("status") != "success" or not is_geo_valid:
         raise HTTPException(
             status_code=422,
             detail={
-                "error": "CAD script execution failed after all self-correction attempts.",
+                "error": "CAD script execution or geometry topology failed after all self-correction attempts.",
                 "self_correction_attempts": self_correction_attempts,
-                "last_traceback": (execution_result.get("stderr", "") if execution_result else "")[:500]
+                "last_traceback": (execution_result.get("stderr", "") if execution_result else "")[:500],
+                "geometry_warnings": execution_result.get("mesh_info", {}).get("geometry_warnings", []) if execution_result else []
             }
         )
 
@@ -192,17 +204,26 @@ async def recompute_part(payload: RecomputeRequest):
     Fast Parametric Recomputation (<200ms target).
     Injects updated slider values into the PARAMS block and re-executes — NO LLM call.
     """
+    t0 = time.perf_counter()
     result = await CADRunner.execute_script_async(
         script_id=f"{payload.script_id}_recomputed",
         python_code=payload.python_code,
         parameters=dict(payload.updated_parameters)
     )
+    elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
     if result["status"] == "error":
+        logger.warning(f"[RECOMPUTE] Failed for {payload.script_id} in {elapsed_ms}ms: {result.get('stderr', '')[:120]}")
         raise HTTPException(
             status_code=400,
             detail={"error": "Recomputation failed", "stderr": result.get("stderr", "")}
         )
+
+    dims = result.get("mesh_info", {}).get("dimensions_mm", {})
+    logger.info(
+        f"[RECOMPUTE] Success | script_id={payload.script_id} | "
+        f"time={elapsed_ms}ms | dims={dims}"
+    )
 
     return RecomputeResponse(
         status="success",
@@ -210,7 +231,7 @@ async def recompute_part(payload: RecomputeRequest):
         mesh_url=result.get("mesh_url"),
         step_url=result.get("step_url"),
         mesh_info=result.get("mesh_info"),
-        recomputation_time_ms=result.get("recomputation_time_ms")
+        recomputation_time_ms=elapsed_ms
     )
 
 
@@ -242,6 +263,146 @@ async def list_generated_models():
                     "url": f"/static/models/{f.name}"
                 })
     return {"status": "success", "count": len(files), "models": files}
+
+
+@app.get("/api/script/{script_id}")
+async def get_script_code(script_id: str):
+    """Retrieve raw build123d Python script code for a generated model by script_id."""
+    py_path = MODELS_DIR / f"{script_id}.py"
+    if not py_path.exists():
+        raise HTTPException(status_code=404, detail=f"Script '{script_id}' not found.")
+    try:
+        with open(py_path, "r", encoding="utf-8") as f:
+            code = f.read()
+        return {"status": "success", "script_id": script_id, "code": code}
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not read script file: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Chat-to-Modify Endpoint
+# ---------------------------------------------------------------------------
+
+@app.post("/api/modify", response_model=ModifyResponse)
+async def modify_part(payload: ModifyRequest, background_tasks: BackgroundTasks):
+    """
+    Chat-to-Modify Endpoint (Week 7 deliverable).
+
+    Takes an existing build123d script and a natural language change request.
+    Returns a fully updated GenerateResponse-compatible payload (new code, parameters, STL/STEP).
+
+    Flow:
+    1. LLMService.modify_code() — edits the script via the LLM using MODIFY_PROMPT_TEMPLATE.
+    2. CADRunner executes the updated script.
+    3. Self-correction loop (up to 3 retries) on execution failure.
+    4. Returns updated STL mesh_url, STEP step_url, parameters, and mesh metrics.
+    """
+    # Generate a versioned script_id to preserve original
+    import re as _re
+    base_id = _re.sub(r'_v\d+$', '', payload.script_id)   # Strip existing _v1, _v2 suffix
+    # Count existing versions
+    existing_versions = list(MODELS_DIR.glob(f"{base_id}_v*.py"))
+    version_num = len(existing_versions) + 1
+    new_script_id = f"{base_id}_v{version_num}"
+
+    modification_preview = payload.modification_prompt[:60] + (
+        "..." if len(payload.modification_prompt) > 60 else ""
+    )
+    logger.info(
+        f"[MODIFY] script_id={new_script_id} | base={base_id} | "
+        f"request='{modification_preview}'"
+    )
+
+    model_used = "unknown"
+    self_correction_attempts = 0
+
+    # Step 1: LLM Modification
+    try:
+        dual_output, model_used = await asyncio.to_thread(
+            LLMService.modify_script,
+            python_code=payload.python_code,
+            modification_prompt=payload.modification_prompt,
+            part_name=payload.part_name,
+            parameters=payload.parameters,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"LLM modification failed: {str(e)}"
+        )
+
+    logger.info(
+        f"[MODIFY] model={model_used} | part='{dual_output.part_name}' | "
+        f"code={len(dual_output.python_code)} chars | {len(dual_output.parameters)} params"
+    )
+
+    # Step 2: Execute with Self-Correction Loop
+    current_code = dual_output.python_code
+    execution_result = None
+
+    for attempt in range(LLMService.MAX_RETRIES + 1):
+        execution_result = await CADRunner.execute_script_async(
+            script_id=new_script_id,
+            python_code=current_code
+        )
+
+        is_geo_valid = execution_result.get("mesh_info", {}).get("is_valid", True)
+        if execution_result["status"] == "success" and is_geo_valid:
+            break
+
+        if attempt < LLMService.MAX_RETRIES:
+            self_correction_attempts += 1
+            if execution_result["status"] != "success":
+                traceback_text = execution_result.get("stderr", "Unknown execution error")
+            else:
+                warnings = execution_result.get("mesh_info", {}).get("geometry_warnings", [])
+                traceback_text = "GEOMETRY TOPOLOGY VALIDATION FAILURE:\n" + "\n".join(warnings)
+
+            logger.warning(
+                f"[MODIFY-CORRECT] Attempt {self_correction_attempts}/{LLMService.MAX_RETRIES} "
+                f"for script_id={new_script_id} | reason={traceback_text[:120].strip()!r}"
+            )
+            try:
+                corrected, model_used = await asyncio.to_thread(
+                    LLMService.correct_code,
+                    user_prompt=payload.modification_prompt,
+                    failed_code=current_code,
+                    error_traceback=traceback_text
+                )
+                current_code = corrected.python_code
+                dual_output = corrected
+            except Exception as correction_error:
+                logger.error(f"[MODIFY-CORRECT] Correction call failed: {correction_error}")
+                break
+
+    is_geo_valid = execution_result.get("mesh_info", {}).get("is_valid", True) if execution_result else False
+    if not execution_result or execution_result.get("status") != "success" or not is_geo_valid:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "Modified CAD script execution or geometry topology failed after all self-correction attempts.",
+                "self_correction_attempts": self_correction_attempts,
+                "last_traceback": (execution_result.get("stderr", "") if execution_result else "")[:500],
+                "geometry_warnings": execution_result.get("mesh_info", {}).get("geometry_warnings", []) if execution_result else []
+            }
+        )
+
+    background_tasks.add_task(ArtifactCleanupManager.cleanup_old_artifacts, 86400)
+
+    return ModifyResponse(
+        status="success",
+        script_id=new_script_id,
+        part_name=dual_output.part_name,
+        description=dual_output.description,
+        python_code=current_code,
+        parameters=dual_output.parameters,
+        mesh_url=execution_result.get("mesh_url"),
+        step_url=execution_result.get("step_url"),
+        mesh_info=execution_result.get("mesh_info"),
+        recomputation_time_ms=execution_result.get("recomputation_time_ms"),
+        model_used=model_used,
+        modification_summary=payload.modification_prompt,
+    )
 
 
 # ---------------------------------------------------------------------------

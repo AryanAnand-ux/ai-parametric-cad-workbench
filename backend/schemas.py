@@ -6,6 +6,7 @@ Defines the Dual-Output API contract:
   - DualOutputPayload: The full LLM response containing executable code + parameter schema.
   - GenerateRequest / GenerateResponse: /api/generate endpoint contracts.
   - RecomputeRequest / RecomputeResponse: /api/recompute endpoint contracts.
+  - ModifyRequest / ModifyResponse: /api/modify (Chat-to-Modify) endpoint contracts.
 """
 from typing import List, Literal, Optional, Dict, Any
 from pydantic import BaseModel, Field, model_validator
@@ -31,6 +32,10 @@ class CADParameter(BaseModel):
         default="number",
         description="Parameter data type"
     )
+    unit: Optional[str] = Field(
+        default=None,
+        description="Physical unit (e.g. 'mm', 'deg', 'count')"
+    )
     default: float = Field(..., description="Default starting value")
     min: float = Field(..., description="Minimum allowed value")
     max: float = Field(..., description="Maximum allowed value")
@@ -38,7 +43,7 @@ class CADParameter(BaseModel):
 
     @model_validator(mode='after')
     def validate_range(self) -> 'CADParameter':
-        """Ensures min <= default <= max for valid slider behavior."""
+        """Ensures min <= default <= max, step > 0, and integer consistency."""
         if self.min > self.max:
             raise ValueError(f"Parameter '{self.name}': min ({self.min}) must be <= max ({self.max})")
         if not (self.min <= self.default <= self.max):
@@ -46,6 +51,16 @@ class CADParameter(BaseModel):
                 f"Parameter '{self.name}': default ({self.default}) must be between "
                 f"min ({self.min}) and max ({self.max})"
             )
+        if self.step <= 0:
+            raise ValueError(f"Parameter '{self.name}': step ({self.step}) must be > 0")
+
+        # Integer consistency check
+        if self.type == "integer":
+            for field_name, val in [("default", self.default), ("min", self.min), ("max", self.max), ("step", self.step)]:
+                if not float(val).is_integer():
+                    raise ValueError(
+                        f"Parameter '{self.name}': type is 'integer' but {field_name} ({val}) is not a whole number"
+                    )
         return self
 
 
@@ -134,3 +149,51 @@ class RecomputeResponse(BaseModel):
     step_url: Optional[str] = None
     mesh_info: Optional[Dict[str, Any]] = None
     recomputation_time_ms: Optional[int] = None   # Consistent Optional with GenerateResponse
+
+
+# ---------------------------------------------------------------------------
+# Chat-to-Modify Request / Response Models
+# ---------------------------------------------------------------------------
+
+class ModifyRequest(BaseModel):
+    """Request payload for POST /api/modify (Chat-to-Modify)"""
+    script_id: str = Field(
+        ...,
+        description="ID of the existing generated script to modify"
+    )
+    python_code: str = Field(
+        ...,
+        description="The current build123d Python script to be modified"
+    )
+    part_name: str = Field(
+        ...,
+        description="Current part name for context"
+    )
+    modification_prompt: str = Field(
+        ...,
+        description="Natural language description of the desired change",
+        min_length=3
+    )
+    parameters: List[CADParameter] = Field(
+        default=[],
+        description="Existing parameter definitions for context preservation"
+    )
+
+
+class ModifyResponse(BaseModel):
+    """Response payload for POST /api/modify (Chat-to-Modify)"""
+    status: str
+    script_id: str
+    part_name: str
+    description: str
+    python_code: str
+    parameters: List[CADParameter]
+    mesh_url: Optional[str] = None
+    step_url: Optional[str] = None
+    mesh_info: Optional[Dict[str, Any]] = None
+    recomputation_time_ms: Optional[int] = None
+    model_used: Optional[str] = None
+    modification_summary: Optional[str] = Field(
+        default=None,
+        description="The modification prompt that produced this version"
+    )

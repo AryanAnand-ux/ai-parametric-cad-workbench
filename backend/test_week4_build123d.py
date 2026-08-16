@@ -13,6 +13,7 @@ import sys
 import asyncio
 import os
 from pathlib import Path
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -20,6 +21,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from services.cad_runner import CADRunner, validate_script_safety
+
 
 
 SIMPLE_BOX_SCRIPT = '''
@@ -59,6 +61,7 @@ export_stl(part.part, OUTPUT_STL)
 '''
 
 
+@pytest.mark.asyncio
 async def test_1_build123d_import():
     print("\n[1/6] Testing build123d Import...")
     try:
@@ -69,6 +72,7 @@ async def test_1_build123d_import():
         sys.exit(1)
 
 
+@pytest.mark.asyncio
 async def test_2_ast_sandbox():
     print("\n[2/6] Testing AST Security Sandbox...")
 
@@ -81,6 +85,7 @@ async def test_2_ast_sandbox():
     print(f"[OK] Unsafe script blocked: {msg}")
 
 
+@pytest.mark.asyncio
 async def test_3_param_injection():
     print("\n[3/6] Testing Parameter Injection...")
     updated = CADRunner.inject_parameters(
@@ -93,6 +98,7 @@ async def test_3_param_injection():
     print("[OK] PARAMS block correctly updated.")
 
 
+@pytest.mark.asyncio
 async def test_4_box_execution():
     print("\n[4/6] Testing build123d Box Execution...")
     result = await CADRunner.execute_script_async(
@@ -108,6 +114,7 @@ async def test_4_box_execution():
         print(f"[FAIL] Execution failed:\n{result['stderr'][:400]}")
 
 
+@pytest.mark.asyncio
 async def test_5_hollow_cylinder():
     print("\n[5/6] Testing Hollow Cylinder (Mode.SUBTRACT)...")
     result = await CADRunner.execute_script_async(
@@ -121,6 +128,7 @@ async def test_5_hollow_cylinder():
         print(f"[FAIL] {result['stderr'][:300]}")
 
 
+@pytest.mark.asyncio
 async def test_6_rag_index():
     print("\n[6/6] Testing RAG ChromaDB Index (local sentence-transformers)...")
     from services.rag_service import RAGService

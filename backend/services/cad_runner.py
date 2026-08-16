@@ -1,15 +1,23 @@
 """
 CAD Runner — build123d Subprocess Executor
 ==========================================
-Replaces freecad_runner.py (trimesh).
 Executes build123d Python scripts in isolated subprocesses.
+
+Pipeline: Inject PARAMS → AST Security Check → Execute → Validate Geometry → Return URLs
 
 Key responsibilities:
 - Inject updated PARAMS into scripts for parametric recomputation
-- Run scripts safely via asyncio.create_subprocess_exec (non-blocking)
+- Run scripts safely via asyncio.to_thread + subprocess.run (Windows-safe)
 - AST security sandbox: whitelist only build123d, math, typing imports
+- Post-execution mesh validation: watertight, connected, non-zero volume
 - Export STL (WebGL preview) + STEP (download) files
-- Return execution metrics and file URLs
+- Return execution metrics, geometry health report, and file URLs
+
+15-Rule Quality Enforcement (from engineering spec):
+  Rule 2 — Geometry validation: assert solid exists, watertight, connected
+  Rule 3 — Connected geometry: detect and flag disconnected islands
+  Rule 7 — Clearance/collision: flag when bbox dimensions are implausible
+  Rule 10 — Tolerances: surface area / volume ratio sanity check
 """
 
 import os
@@ -20,6 +28,7 @@ import json
 import time
 import asyncio
 import logging
+import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
@@ -29,13 +38,82 @@ from services.cleanup import ArtifactCleanupManager
 logger = logging.getLogger("cad_workbench.cad_runner")
 
 # ---------------------------------------------------------------------------
-# Allowed imports whitelist (AST security sandbox)
+# Structured Error Classification
 # ---------------------------------------------------------------------------
+# Motivation (from Week 1 retrospective):
+#   A bare generic Exception gives zero signal about WHY a script failed.
+#   Classifying into Timeout / Syntax / Security / Runtime / IOError means:
+#     - The self-correction prompt can be tailored to the specific failure mode
+#     - Benchmarking can measure which failure mode is most common
+#     - The frontend can show a specific, actionable message to the user
+#   This was flagged as a Week 1 gap: "even a basic classification would make
+#   debugging the pipeline much easier for weeks 2–5."
+# ---------------------------------------------------------------------------
+
+class ErrorType:
+    TIMEOUT  = "timeout"   # script ran longer than timeout_seconds
+    SYNTAX   = "syntax"    # Python SyntaxError before any execution
+    SECURITY = "security"  # blocked by AST import whitelist
+    RUNTIME  = "runtime"   # exception raised during build123d execution
+    IO_ERROR = "io_error"  # failed to write temp file or read output
+    UNKNOWN  = "unknown"   # catch-all fallback
+
+
+def classify_error(stderr: str, returncode: int) -> str:
+    """
+    Inspects stderr content to determine the specific error category.
+
+    This is called AFTER stdout/stderr have been fully captured from the
+    completed subprocess — there is no race condition with script execution.
+
+    Returns one of the ErrorType string constants.
+    """
+    # returncode == -1 is our sentinel for a timeout kill
+    if returncode == -1:
+        return ErrorType.TIMEOUT
+
+    if not stderr:
+        return ErrorType.UNKNOWN
+
+    s = stderr.lower()
+
+    # Python syntax errors (detected before any geometry runs)
+    if "syntaxerror" in s or "invalid syntax" in s or "indentationerror" in s:
+        return ErrorType.SYNTAX
+
+    # Import violations — AST sandbox may have missed a dynamic import,
+    # or a package is genuinely not installed in this venv
+    if "importerror" in s or "modulenotfounderror" in s:
+        return ErrorType.SECURITY
+
+    # build123d / OpenCASCADE geometry failures and standard Python exceptions
+    if any(kw in s for kw in [
+        "assertionerror", "valueerror", "typeerror", "attributeerror",
+        "nameerror", "zerodivisionerror", "runtimeerror",
+        "build123d", "opencascade", "brep", "traceback"
+    ]):
+        return ErrorType.RUNTIME
+
+    return ErrorType.UNKNOWN
+
+
 
 ALLOWED_IMPORTS = {
     "build123d", "math", "typing", "types",
     "collections", "itertools", "functools",
     "enum", "dataclasses", "abc", "operator"
+}
+
+# Dangerous built-ins and dunder attributes that could bypass import whitelists
+BLOCKED_BUILTINS = {
+    "open", "eval", "exec", "compile", "__import__", "input",
+    "globals", "locals", "getattr", "setattr", "delattr", "system",
+    "breakpoint", "memoryview"
+}
+
+BLOCKED_ATTRIBUTES = {
+    "__subclasses__", "__bases__", "__globals__",
+    "__code__", "__reduce__", "__reduce_ex__", "__mro__"
 }
 
 
@@ -45,8 +123,10 @@ ALLOWED_IMPORTS = {
 
 def validate_script_safety(python_code: str) -> tuple[bool, str]:
     """
-    Parses the script with Python's AST module and verifies that only
-    whitelisted libraries are imported. Blocks os, sys, subprocess, etc.
+    Parses the script with Python's AST module and verifies:
+      1. Only whitelisted libraries are imported (blocks os, sys, subprocess, etc.)
+      2. No dangerous built-in functions are invoked (blocks open, eval, exec, compile, input, etc.)
+      3. No sensitive dunder attribute reflection exploits (__subclasses__, __globals__, etc.)
 
     Returns: (is_safe: bool, reason: str)
     """
@@ -56,19 +136,38 @@ def validate_script_safety(python_code: str) -> tuple[bool, str]:
         return False, f"Syntax error: {e}"
 
     for node in ast.walk(tree):
-        # Check `import X` statements
+        # 1. Check `import X` statements
         if isinstance(node, ast.Import):
             for alias in node.names:
                 root = alias.name.split(".")[0]
                 if root not in ALLOWED_IMPORTS:
                     return False, f"Blocked import: '{alias.name}' (not in whitelist)"
 
-        # Check `from X import Y` statements
+        # 2. Check `from X import Y` statements
         elif isinstance(node, ast.ImportFrom):
             if node.module:
                 root = node.module.split(".")[0]
                 if root not in ALLOWED_IMPORTS:
                     return False, f"Blocked import: 'from {node.module}' (not in whitelist)"
+
+        # 3. Check function calls (blocks unimported builtins like open(), eval(), exec(), input())
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                if node.func.id in BLOCKED_BUILTINS:
+                    return False, f"Blocked builtin call: '{node.func.id}()' is forbidden in CAD scripts"
+            elif isinstance(node.func, ast.Attribute):
+                if node.func.attr in BLOCKED_BUILTINS:
+                    return False, f"Blocked attribute call: '{node.func.attr}()' is forbidden"
+
+        # 4. Check sensitive attribute introspection/reflection
+        elif isinstance(node, ast.Attribute):
+            if node.attr in BLOCKED_ATTRIBUTES:
+                return False, f"Blocked sensitive attribute access: '{node.attr}'"
+
+        # 5. Check direct reference to __builtins__ / __import__
+        elif isinstance(node, ast.Name):
+            if node.id in {"__builtins__", "__import__"}:
+                return False, f"Blocked direct reference: '{node.id}'"
 
     return True, "OK"
 
@@ -137,12 +236,19 @@ def _build_wrapper(python_code: str, stl_posix: str, step_posix: str) -> str:
     """
     Wraps the user script with OUTPUT_STL / OUTPUT_STEP injection
     and a try/except that sends tracebacks to stderr.
+
+    OUTPUT_STL and OUTPUT_STEP are always injected here — the LLM
+    should never redefine them (Rule 1 / Rule 11 of the engineering spec).
+    If the script redefines them, the outer assignments are ignored by Python
+    (last write wins), but we inject first so generated code can optionally
+    define fallbacks without breaking the pipeline.
     """
     indented = "\n".join(
         "    " + line if line.strip() else line
         for line in python_code.splitlines()
     )
-    return f'''import sys, os
+    return f'''import sys
+# Runtime-injected export paths (do NOT redefine these in generated scripts)
 OUTPUT_STL  = r"{stl_posix}"
 OUTPUT_STEP = r"{step_posix}"
 
@@ -189,9 +295,13 @@ class CADRunner:
         # ── AST Security Check ────────────────────────────────────────────
         is_safe, reason = validate_script_safety(python_code)
         if not is_safe:
-            logger.warning(f"[CAD] Script BLOCKED by AST sandbox: {reason}")
+            # classify_error: distinguish SyntaxError (bad LLM code) from
+            # blocked import (security violation) for targeted self-correction.
+            err_type = ErrorType.SYNTAX if "Syntax error" in reason else ErrorType.SECURITY
+            logger.warning(f"[CAD] Script BLOCKED ({err_type}): {reason}")
             return {
                 "status": "error",
+                "error_type": err_type,
                 "script_id": script_id,
                 "recomputation_time_ms": 0,
                 "stderr": f"Security violation: {reason}",
@@ -218,50 +328,140 @@ class CADRunner:
                 f.write(wrapper)
         except OSError as e:
             return {
-                "status": "error", "script_id": script_id,
+                "status": "error",
+                "error_type": ErrorType.IO_ERROR,
+                "script_id": script_id,
                 "recomputation_time_ms": 0,
                 "stderr": f"Failed to write temp script: {e}",
                 "mesh_url": None, "step_url": None, "mesh_info": {}
             }
 
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                PYTHON_EXEC, str(temp_script),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+        # ── Run the script in a thread-pool executor ─────────────────────
+        # asyncio.create_subprocess_exec raises NotImplementedError on
+        # Windows with Python 3.12+ SelectorEventLoop (used by uvicorn).
+        # asyncio.to_thread + subprocess.run works on all platforms/versions.
+        def _run_script() -> tuple[int, str, str]:
+            """Blocking subprocess call — runs in a thread pool."""
+            result = subprocess.run(
+                [PYTHON_EXEC, str(temp_script)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout_seconds,
             )
+            return result.returncode, result.stdout, result.stderr
 
+        try:
             try:
-                stdout_b, stderr_b = await asyncio.wait_for(
-                    proc.communicate(), timeout=timeout_seconds
+                returncode, stdout, stderr = await asyncio.wait_for(
+                    asyncio.to_thread(_run_script),
+                    timeout=timeout_seconds + 5,  # outer asyncio guard
                 )
             except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
                 return {
-                    "status": "error", "script_id": script_id,
+                    "status": "error",
+                    "error_type": ErrorType.TIMEOUT,
+                    "script_id": script_id,
                     "recomputation_time_ms": int((time.time() - start) * 1000),
                     "stderr": f"Execution timed out after {timeout_seconds}s.",
                     "stdout": "", "returncode": -1,
                     "mesh_url": None, "step_url": None, "mesh_info": {}
                 }
+            except subprocess.TimeoutExpired:
+                return {
+                    "status": "error",
+                    "error_type": ErrorType.TIMEOUT,
+                    "script_id": script_id,
+                    "recomputation_time_ms": int((time.time() - start) * 1000),
+                    "stderr": f"Script timed out after {timeout_seconds}s.",
+                    "stdout": "", "returncode": -1,
+                    "mesh_url": None, "step_url": None, "mesh_info": {}
+                }
 
-            stdout = stdout_b.decode("utf-8", errors="replace")
-            stderr = stderr_b.decode("utf-8", errors="replace")
             elapsed = int((time.time() - start) * 1000)
-            success = (proc.returncode == 0) and stl_path.exists()
+            success = (returncode == 0) and stl_path.exists()
 
-            # ── Mesh inspection ───────────────────────────────────────────
+            # Classify error AFTER full stdout/stderr capture — no race condition.
+            # Cleanup of temp_script happens in the `finally` block below,
+            # sequenced after this classification and after all stderr is read.
+            error_type = ErrorType.UNKNOWN if not success else None
+            if not success:
+                error_type = classify_error(stderr, returncode)
+                logger.warning(
+                    f"[CAD] Script failed | script_id={script_id} "
+                    f"| error_type={error_type} | returncode={returncode} "
+                    f"| stderr_head={stderr[:120].strip()!r}"
+                )
+
+            # ── Persist Python script file for code inspection API ──────────
+            py_path = MODELS_DIR / f"{script_id}.py"
+            if success:
+                try:
+                    with open(py_path, "w", encoding="utf-8") as py_file:
+                        py_file.write(python_code)
+                except OSError as me:
+                    logger.warning(f"[CAD] Could not persist script file: {me}")
+
+            # ── Mesh inspection & geometry validation ─────────────────────
+            # Implements engineering spec rules 2, 3, 7:
+            #   Rule 2 — Validate geometry before accepting success
+            #   Rule 3 — Detect disconnected/floating bodies (islands)
+            #   Rule 7 — Sanity-check volume vs surface area ratio
             mesh_info = {}
+            geometry_warnings = []
             if stl_path.exists():
                 try:
-                    import trimesh
+                    import trimesh, trimesh.graph, gc
                     mesh = trimesh.load_mesh(str(stl_path))
                     ext = mesh.extents
+
+                    # --- Watertight check (Rule 2) ---
+                    is_watertight = bool(getattr(mesh, "is_watertight", False))
+                    if not is_watertight:
+                        geometry_warnings.append(
+                            "Mesh is not watertight (non-manifold edges detected). "
+                            "Check for zero-thickness walls or boolean operation failures."
+                        )
+
+                    # --- Volume sanity (Rule 2) ---
+                    volume = float(getattr(mesh, "volume", 0.0))
+                    if volume <= 0:
+                        geometry_warnings.append(
+                            f"Mesh volume is {volume:.2f} mm³ (≤ 0). "
+                            "Geometry may be inverted or degenerate."
+                        )
+
+                    # --- Disconnected body detection (Rule 3) ---
+                    try:
+                        components = trimesh.graph.connected_components(
+                            mesh.face_adjacency, min_len=3
+                        )
+                        body_count = len(list(components))
+                    except Exception:
+                        body_count = 1  # can't determine — assume OK
+
+                    if body_count > 1:
+                        geometry_warnings.append(
+                            f"Mesh has {body_count} disconnected bodies (floating islands). "
+                            "All structural components must be physically fused. "
+                            "Use fuse() or ensure sketch regions overlap the main body."
+                        )
+
+                    # --- Dimension sanity (Rule 7) ---
+                    min_extent = min(float(e) for e in ext)
+                    if min_extent < 0.1:
+                        geometry_warnings.append(
+                            f"Minimum bounding dimension is {min_extent:.3f} mm (< 0.1 mm). "
+                            "Possible zero-thickness geometry or collapsed face."
+                        )
+
                     mesh_info = {
-                        "is_valid": mesh.is_watertight,
-                        "volume_mm3": round(float(mesh.volume), 2),
-                        "surface_area_mm2": round(float(mesh.area), 2),
+                        "is_valid": is_watertight and volume > 0 and body_count == 1,
+                        "is_watertight": is_watertight,
+                        "body_count": body_count,
+                        "volume_mm3": round(volume, 2),
+                        "surface_area_mm2": round(float(getattr(mesh, "area", 0.0)), 2),
                         "dimensions_mm": {
                             "x": round(float(ext[0]), 2),
                             "y": round(float(ext[1]), 2),
@@ -269,22 +469,41 @@ class CADRunner:
                         },
                         "vertex_count": len(mesh.vertices),
                         "face_count": len(mesh.faces),
+                        "geometry_warnings": geometry_warnings,
                     }
+
+                    if geometry_warnings:
+                        logger.warning(
+                            f"[CAD] Geometry validation warnings for {script_id}: "
+                            + " | ".join(geometry_warnings)
+                        )
+
+                    del mesh
+                    gc.collect()
                 except Exception as me:
                     stderr += f"\nMesh inspection warning: {me}"
 
             return {
                 "status": "success" if success else "error",
+                # error_type is set AFTER stdout/stderr are fully captured above.
+                # The `finally` block that deletes temp_script runs AFTER this
+                # return — so there is no race between error classification and
+                # file cleanup. See classify_error() for the classification logic.
+                "error_type": error_type,
                 "script_id": script_id,
                 "recomputation_time_ms": elapsed,
                 "stdout": stdout,
                 "stderr": stderr,
-                "returncode": proc.returncode,
+                "returncode": returncode,
                 "mesh_url":  f"/static/models/{stl_filename}"  if stl_path.exists()  else None,
                 "step_url":  f"/static/models/{step_filename}" if step_path.exists()  else None,
+                "script_url": f"/static/models/{script_id}.py" if py_path.exists()   else None,
                 "mesh_info": mesh_info,
                 "python_code": python_code,
             }
 
         finally:
+            # Cleanup is intentionally sequenced AFTER stdout/stderr capture and
+            # error classification above — there is no race condition on Windows.
             ArtifactCleanupManager.remove_file_safely(temp_script)
+

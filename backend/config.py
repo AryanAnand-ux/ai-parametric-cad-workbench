@@ -4,8 +4,12 @@ from pathlib import Path
 
 # Base directories
 BASE_DIR = Path(__file__).resolve().parent
-TEMP_DIR = BASE_DIR / "temp"
-MODELS_DIR = TEMP_DIR / "models"
+
+# ── Temp directory: placed OUTSIDE the backend source tree so that
+# uvicorn's WatchFiles reloader never sees generated .py/.stl/.step files
+# and does NOT restart the server mid-request (which caused 500 errors).
+TEMP_DIR    = BASE_DIR.parent / "scratch" / "temp"
+MODELS_DIR  = TEMP_DIR / "models"
 
 # Ensure temporary directories exist
 TEMP_DIR.mkdir(parents=True, exist_ok=True)

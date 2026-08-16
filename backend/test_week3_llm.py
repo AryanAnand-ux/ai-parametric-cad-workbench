@@ -15,6 +15,7 @@ import json
 import asyncio
 import os
 from pathlib import Path
+import pytest
 
 sys.path.append(str(Path(__file__).resolve().parent))
 
@@ -90,6 +91,7 @@ def test_2_llm_response_parsing():
     print("[OK] Response parser correctly stripped markdown fences.")
 
 
+@pytest.mark.asyncio
 async def test_3_end_to_end_generation():
     """
     End-to-end test: Call real Gemini API -> parse -> execute -> STL file.
@@ -167,6 +169,7 @@ export_step(part.part, OUTPUT_STEP)
     print(f"     Updated code preview:\n{updated_code[:180]}")
 
 
+@pytest.mark.asyncio
 async def test_5_full_api_import():
     """Test that all modules import cleanly and FastAPI app is valid."""
     print("\n[5/5] Testing FastAPI App Import & Schema...")
