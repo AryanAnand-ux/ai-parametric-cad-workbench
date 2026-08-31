@@ -2,6 +2,7 @@
 FastAPI Application Entry Point — AI-Driven Parametric CAD Workbench API
 """
 import asyncio
+import re
 import uuid
 import time
 import logging
@@ -280,8 +281,47 @@ async def get_script_code(script_id: str):
 
 
 # ---------------------------------------------------------------------------
-# Chat-to-Modify Endpoint
+# Download Endpoint
 # ---------------------------------------------------------------------------
+
+@app.get("/api/download/{script_id}/{fmt}")
+async def download_model(script_id: str, fmt: str):
+    """
+    Download production-ready CAD artifacts (STEP / STL / PY).
+    Returns a FileResponse with appropriate attachment headers.
+    """
+    from fastapi.responses import FileResponse
+    
+    fmt_lower = fmt.lower().strip(".")
+    allowed_formats = {"stl": "application/sla", "step": "application/step", "stp": "application/step", "py": "text/x-python"}
+    
+    if fmt_lower not in allowed_formats:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format '{fmt}'. Supported formats: {list(allowed_formats.keys())}"
+        )
+        
+    ext = "step" if fmt_lower in ("step", "stp") else fmt_lower
+    file_path = MODELS_DIR / f"{script_id}.{ext}"
+    
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Artifact '{script_id}.{ext}' not found on server."
+        )
+        
+    media_type = allowed_formats[fmt_lower]
+    download_filename = f"{script_id}.{ext}"
+    
+    return FileResponse(
+        path=str(file_path),
+        media_type=media_type,
+        filename=download_filename,
+        headers={"Content-Disposition": f'attachment; filename="{download_filename}"'}
+    )
+
+
+
 
 @app.post("/api/modify", response_model=ModifyResponse)
 async def modify_part(payload: ModifyRequest, background_tasks: BackgroundTasks):
@@ -298,8 +338,7 @@ async def modify_part(payload: ModifyRequest, background_tasks: BackgroundTasks)
     4. Returns updated STL mesh_url, STEP step_url, parameters, and mesh metrics.
     """
     # Generate a versioned script_id to preserve original
-    import re as _re
-    base_id = _re.sub(r'_v\d+$', '', payload.script_id)   # Strip existing _v1, _v2 suffix
+    base_id = re.sub(r'_v\d+$', '', payload.script_id)   # Strip existing _v1, _v2 suffix
     # Count existing versions
     existing_versions = list(MODELS_DIR.glob(f"{base_id}_v*.py"))
     version_num = len(existing_versions) + 1

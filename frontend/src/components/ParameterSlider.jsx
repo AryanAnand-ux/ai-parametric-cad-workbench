@@ -8,75 +8,128 @@
  */
 
 export default function ParameterSlider({ param, value, onChange }) {
+  // Dynamic decimal places based on step precision — computed FIRST so it's
+  // available inside handleStepChange (which would cause a ReferenceError otherwise)
+  const decimals = Number.isInteger(param.step)
+    ? 0
+    : (param.step.toString().split('.')[1]?.length || 1);
+
+  // Safe percentage calculation — prevents NaN / Infinity if min === max
+  const range = param.max - param.min;
+  const numValue = typeof value === 'number' && !isNaN(value) ? value : param.default;
+  const pct = range <= 0 ? 0 : Math.max(0, Math.min(100, ((numValue - param.min) / range) * 100));
+
   const handleChange = (e) => {
-    onChange(param.name, parseFloat(e.target.value));
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val)) {
+      onChange(param.name, val);
+    }
   };
 
   const handleReset = () => {
     onChange(param.name, param.default);
   };
 
-  // Safe percentage calculation — prevents NaN / Infinity if min === max
-  const range = param.max - param.min;
-  const pct = range <= 0 ? 0 : Math.max(0, Math.min(100, ((value - param.min) / range) * 100));
+  const handleStepChange = (direction) => {
+    const step = param.step || 1.0;
+    const current = typeof value === 'number' && !isNaN(value) ? value : param.default;
+    const next = Math.max(param.min, Math.min(param.max, current + direction * step));
+    onChange(param.name, parseFloat(next.toFixed(decimals)));
+  };
 
-  // Dynamic decimal places based on step precision
-  const decimals = Number.isInteger(param.step)
-    ? 0
-    : (param.step.toString().split('.')[1]?.length || 1);
+  const displayVal = numValue.toFixed(decimals);
 
-  const displayVal = typeof value === 'number' && !isNaN(value)
-    ? value.toFixed(decimals)
-    : param.default;
-
-  // Unit formatting: use explicit schema unit if provided, otherwise fallback to heuristics
+  // Unit formatting
   let unit = '';
   if (param.unit) {
-    unit = (param.unit === 'deg' || param.unit === '°') ? '°' : (param.unit === 'mm' ? ' mm' : ` ${param.unit}`);
+    unit = (param.unit === 'deg' || param.unit === '°') ? '°' : (param.unit === 'mm' ? 'mm' : param.unit);
   } else {
     const lowerName = param.name.toLowerCase();
     unit = lowerName.includes('angle') || lowerName.includes('deg')
       ? '°'
-      : (lowerName.includes('count') || lowerName.includes('num') || param.type === 'integer' ? '' : ' mm');
+      : (lowerName.includes('count') || lowerName.includes('num') || param.type === 'integer' ? '' : 'mm');
   }
 
-  const isModified = value !== param.default;
+  const isModified = Math.abs(numValue - param.default) > 0.0001;
 
   return (
-    <div className="param-item">
+    <div className={`param-item ${isModified ? 'param-item--modified' : ''}`}>
       <div className="param-header">
-        <span className="param-label">{param.label}</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span className="param-value">{displayVal}{unit}</span>
+        <div className="param-label-group">
+          <span className="param-label">{param.label || param.name}</span>
+          {param.name && <span className="param-var-tag">{param.name}</span>}
+        </div>
+        <div className="param-controls-group">
+          <div className="param-value-box">
+            <input
+              type="number"
+              className="param-number-input"
+              value={displayVal}
+              min={param.min}
+              max={param.max}
+              step={param.step}
+              onChange={handleChange}
+            />
+            {unit && <span className="param-unit-badge">{unit}</span>}
+          </div>
           {isModified && (
             <button
               onClick={handleReset}
               className="param-reset-btn"
-              title="Reset parameter to default value"
+              title={`Reset to default (${param.default}${unit})`}
             >
-              ↺
+              ↺ Reset
             </button>
           )}
         </div>
       </div>
 
-      <input
-        id={`slider-${param.name}`}
-        className="param-slider"
-        type="range"
-        min={param.min}
-        max={param.max}
-        step={param.step}
-        value={value}
-        onChange={handleChange}
-        style={{
-          background: `linear-gradient(to right, var(--accent) ${pct}%, var(--bg-input) ${pct}%)`
-        }}
-      />
+      <div className="param-slider-wrapper">
+        <button
+          type="button"
+          className="param-stepper-btn"
+          onClick={() => handleStepChange(-1)}
+          title={`Decrease by ${param.step}`}
+        >
+          -
+        </button>
+
+        <div className="param-slider-container">
+          <input
+            id={`slider-${param.name}`}
+            className="param-slider"
+            type="range"
+            min={param.min}
+            max={param.max}
+            step={param.step}
+            value={numValue}
+            onChange={handleChange}
+            style={{
+              background: `linear-gradient(to right, #2563EB ${pct}%, #E2E8F0 ${pct}%)`
+            }}
+          />
+        </div>
+
+        <button
+          type="button"
+          className="param-stepper-btn"
+          onClick={() => handleStepChange(1)}
+          title={`Increase by ${param.step}`}
+        >
+          +
+        </button>
+      </div>
 
       <div className="param-range-labels">
-        <span className="param-range-label">{param.min}</span>
-        <span className="param-range-label">{param.max}</span>
+        <span className="param-range-label min">
+          Min: <strong>{param.min}</strong>{unit}
+        </span>
+        <span className="param-range-label def">
+          Default: <strong>{param.default}</strong>{unit}
+        </span>
+        <span className="param-range-label max">
+          Max: <strong>{param.max}</strong>{unit}
+        </span>
       </div>
     </div>
   );

@@ -1,8 +1,5 @@
-import os
-import sys
 from pathlib import Path
 from typing import Dict, Any
-from pathlib import Path
 import trimesh
 
 class GeometryExporter:
@@ -19,8 +16,6 @@ class GeometryExporter:
             raise FileNotFoundError(f"Mesh file not found at {stl_path}")
 
         mesh = trimesh.load_mesh(str(stl_path))
-
-        bounds = mesh.bounds   # [[min_x, min_y, min_z], [max_x, max_y, max_z]]
         dimensions = mesh.extents  # [length_x, length_y, length_z]
 
         return {

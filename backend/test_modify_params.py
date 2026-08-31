@@ -1,26 +1,90 @@
 """
-Unit test for parameter preservation and schema consistency during Chat-to-Modify (Week 7 deliverable).
+Unit tests for Chat-to-Modify request/response schemas and LLMService modification contracts.
 """
 import pytest
-from schemas import CADParameter, DualOutputPayload
+from unittest.mock import patch
+from schemas import CADParameter, DualOutputPayload, ModifyRequest, ModifyResponse
+from services.llm_service import LLMService
 
-def test_param_preservation_contract():
-    # Simulates base parameters
-    base_params = [
-        CADParameter(name="length", label="Length (mm)", type="number", default=50.0, min=10.0, max=100.0, step=1.0, unit="mm"),
-        CADParameter(name="width", label="Width (mm)", type="number", default=30.0, min=10.0, max=100.0, step=1.0, unit="mm")
-    ]
-    base_keys = {p.name for p in base_params}
 
-    # Simulates modified output payload returned from LLM
-    modified_params = [
-        CADParameter(name="length", label="Length (mm)", type="number", default=50.0, min=10.0, max=100.0, step=1.0, unit="mm"),
-        CADParameter(name="width", label="Width (mm)", type="number", default=30.0, min=10.0, max=100.0, step=1.0, unit="mm"),
-        CADParameter(name="hole_radius", label="Hole Radius (mm)", type="number", default=4.0, min=1.0, max=10.0, step=0.5, unit="mm")
-    ]
-    modified_keys = {p.name for p in modified_params}
+def test_modify_request_validation():
+    """Test ModifyRequest schema enforcement."""
+    req = ModifyRequest(
+        script_id="part_test123",
+        python_code="PARAMS = {'length': 50.0}\nfrom build123d import *",
+        part_name="Test Bracket",
+        modification_prompt="Make it 20mm wider and add mounting holes",
+        parameters=[
+            CADParameter(name="length", label="Length", type="number", default=50.0, min=10.0, max=100.0, step=1.0)
+        ]
+    )
+    assert req.script_id == "part_test123"
+    assert req.part_name == "Test Bracket"
+    assert len(req.parameters) == 1
+    assert req.modification_prompt == "Make it 20mm wider and add mounting holes"
 
-    # Invariant: Base keys must be preserved in the modified parameter set (superset check)
-    assert base_keys.issubset(modified_keys), f"Base parameters {base_keys - modified_keys} were lost during modification!"
-    assert "hole_radius" in modified_keys
-    assert len(modified_params) == 3
+
+def test_modify_request_short_prompt_rejected():
+    """Test ModifyRequest rejects empty or too-short prompts (<3 chars)."""
+    with pytest.raises(Exception):
+        ModifyRequest(
+            script_id="part_test123",
+            python_code="PARAMS = {}",
+            part_name="Test",
+            modification_prompt="hi"  # < 3 chars
+        )
+
+
+def test_modify_response_schema():
+    """Test ModifyResponse construction and fields."""
+    resp = ModifyResponse(
+        status="success",
+        script_id="part_test123_v1",
+        part_name="Modified Bracket",
+        description="Modified with extra width",
+        python_code="PARAMS = {'length': 50.0, 'width': 30.0}\nfrom build123d import *",
+        parameters=[
+            CADParameter(name="length", label="Length", type="number", default=50.0, min=10.0, max=100.0, step=1.0),
+            CADParameter(name="width", label="Width", type="number", default=30.0, min=10.0, max=100.0, step=1.0)
+        ],
+        mesh_url="/static/models/part_test123_v1.stl",
+        step_url="/static/models/part_test123_v1.step",
+        mesh_info={"is_watertight": True, "body_count": 1, "volume_mm3": 1500.0},
+        recomputation_time_ms=120,
+        model_used="gemini-3.5-flash-lite",
+        modification_summary="Make it 20mm wider"
+    )
+    assert resp.status == "success"
+    assert resp.script_id == "part_test123_v1"
+    assert len(resp.parameters) == 2
+    assert resp.mesh_info["is_watertight"] is True
+
+
+def test_llm_service_modify_script_contract():
+    """Test LLMService.modify_script properly delegates to modify_code and preserves params."""
+    mock_payload = DualOutputPayload(
+        part_name="Modified Part",
+        description="Test description",
+        python_code="PARAMS = {'length': 50.0, 'width': 40.0}\nfrom build123d import *",
+        parameters=[
+            CADParameter(name="length", label="Length", type="number", default=50.0, min=10.0, max=100.0, step=1.0),
+            CADParameter(name="width", label="Width", type="number", default=40.0, min=10.0, max=100.0, step=1.0)
+        ]
+    )
+
+    with patch.object(LLMService, '_call_with_fallback', return_value=(mock_payload, "gemini-3.5-flash-lite")):
+        payload, model = LLMService.modify_script(
+            python_code="PARAMS = {'length': 50.0}\nfrom build123d import *",
+            modification_prompt="Add 40mm width",
+            part_name="Base Part",
+            parameters=[
+                CADParameter(name="length", label="Length", type="number", default=50.0, min=10.0, max=100.0, step=1.0)
+            ]
+        )
+        assert payload.part_name == "Modified Part"
+        assert model == "gemini-3.5-flash-lite"
+        assert len(payload.parameters) == 2
+        param_names = {p.name for p in payload.parameters}
+        assert "length" in param_names
+        assert "width" in param_names
+

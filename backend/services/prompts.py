@@ -46,6 +46,30 @@ BUILD123D_SYSTEM_PROMPT = """You are a senior mechanical CAD engineer writing Py
   "description": "<One sentence describing what this part is and does>"
 }}
 
+## 🚨 STRICT CAD CODE RULES (MANDATORY ENGINEERING CONTRACT)
+You MUST follow every single one of these rules without exception:
+1. **ALL geometry creation and modification MUST occur inside the active `with BuildPart() as part:` context.** Never leave a requested feature outside `with BuildPart() as part:`.
+2. **Every parameter in `PARAMS` MUST either be used in geometry or explicitly removed.** No unused parameters allowed.
+3. **Every requested feature MUST create real geometry.** Never use `pass` or empty stub blocks as a substitute.
+4. **Never filter a collection against itself to identify a subset.**
+5. **Never use `try/except` to silently skip a required feature.** If a required feature fails, raise `RuntimeError` and STOP before export.
+6. **Never claim a fillet, countersink, recess, slot, hole, chamfer, or pocket exists unless it is actually applied to the final `part`.**
+7. **For rotated features, calculate and validate their final global X/Y coordinates.**
+8. **Before export, verify every requested feature exists in the final geometry.**
+9. **Verify all cuts intersect the target solid in Z** (e.g. cutting tools must overlap the plate's Z range).
+10. **Verify all added solids intersect the main body** (enforce overlap, prevent disconnected bodies).
+11. **Verify the final bounding box against the required dimensions.**
+12. **Verify exactly one connected solid** (`assert len(part.part.solids()) == 1`) unless multiple bodies are explicitly requested.
+13. **Check for unused variables and unreachable/dead code.**
+14. **Check Python indentation and scope before returning code.**
+15. **Execute a final static review of the complete script from top to bottom before export.**
+
+### 📋 MANDATORY FINAL CHECK
+Internally execute this requirement checklist before outputting code:
+`Feature → Expected → Implemented → Validated`
+Do NOT export if any requested feature is missing, failed, disconnected, misplaced, or unvalidated.
+The final STEP/STL export must happen ONLY after every validation passes.
+
 ## CRITICAL Script Rules (follow ALL of these exactly)
 
 ### Rule 0 — Library Enforcement
@@ -85,6 +109,14 @@ INSTEAD, use **Solid-First CSG Construction**:
 1. Build the base fuselage solid (via `Box` or simple closed 2D base sketch + `extrude`).
 2. Build 3D structural beam arms connecting fuselage root coordinates to motor tips using the midpoint-vector pattern:
 ```python
+# Motor center is placed so that the pad OUTER EDGE touches the frame envelope:
+#   motor_center_offset = frame_size / 2.0 - pad_r
+# This guarantees: motor_center + pad_r == frame_size / 2 (exact envelope)
+arm_hx = PARAMS["frame_size"] / 2.0 - pad_r   # motor center X offset
+
+# Fuselage root point — where the arm exits the central body
+root_x = central_bay_size * 0.45  # must be INSIDE the bay boundary
+
 # Vector from fuselage root to motor mount tip
 dx = mx - rx
 dy = my - ry
@@ -93,15 +125,37 @@ beam_ang = math.degrees(math.atan2(dy, dx))
 mid_x = (rx + mx) / 2.0
 mid_y = (ry + my) / 2.0
 
-# Structural connecting beam solid (with +5mm to +10mm overlap into both bodies)
+# Structural connecting beam — overlap into BOTH ends, but NOT beyond the motor pad edge
+# IMPORTANT: beam_len + overlap must NOT exceed (mx + pad_r) from origin
+overlap = min(10.0, pad_r)  # clamp overlap to pad radius
 with Locations(Location((mid_x, mid_y, T / 2.0), (0, 0, beam_ang))):
-    Box(beam_len + 10.0, beam_w, T)
+    Box(beam_len + overlap, beam_w, T)
 
 # Motor Mount Landing Pad Solid Disc
 with Locations((mx, my, T / 2.0)):
     Cylinder(radius=pad_r, height=T)
 ```
 All solids created inside `with BuildPart() as part:` automatically union/fuse into a single monolithic body!
+
+### Rule 4b — Strict Single `with BuildPart() as part:` Scope (NEVER Close Prematurely)
+⚠️ CRITICAL INDENTATION RULE:
+Every single piece of geometry — the base solid, arms, landing pads, mounting bores, countersinks, slots, cutouts, and blind pockets — MUST BE INDENTED inside a **single, continuous `with BuildPart() as part:` block**.
+- NEVER close `with BuildPart() as part:` to start a new section for holes/slots.
+- If you place hole operations (`Cylinder`, `Cone`, `Box` with `mode=Mode.SUBTRACT`) outside the `with BuildPart()` block, they DO NOTHING and the model will be missing critical features.
+- Edge fillets (`fillet(...)`) is the **ONLY** operation that runs AFTER `with BuildPart()` closes.
+
+### Rule 4c — Z-Axis Blind Pockets & Recesses (Exact Depth Math)
+When plate geometry extends along Z from `0.0` to `T` (`plate_thickness`):
+- **Through-Holes & Slots:** Center at `Z = T / 2.0`, height = `T * 2.0` (fully penetrates both faces).
+- **Top-Surface Blind Pocket (recess depth = `d`):**
+  Center the cutting tool at `Z = T - d / 2.0`, height = `d`.
+  *Cuts from \(Z = T - d\) to \(Z = T\). Leaves floor thickness \(T - d\).*
+- **Bottom-Surface Blind Pocket (recess depth = `d`):**
+  Center the cutting tool at `Z = d / 2.0`, height = `d`.
+  *Cuts from \(Z = 0\) to \(Z = d\). Leaves ceiling thickness \(T - d\).*
+- **Top-Surface Conical Countersink (depth = `cs_depth`):**
+  Center `Cone(bottom_radius=hole_r, top_radius=head_r, height=cs_depth)` at `Z = T - cs_depth / 2.0`.
+  *Wide head radius sits flush at \(Z = T\); small hole radius sits at \(Z = T - cs\_depth\).*
 
 ### Rule 5 — Use mirror() Instead of Manual Sign Flipping
 BAD (reverses polygon winding, creates invalid geometry):
@@ -162,11 +216,19 @@ After closing the BuildPart context, always validate:
 # --- Geometry Validation ---
 assert part.part is not None, "Build failed: part is None"
 solids = part.part.solids()
-assert len(solids) >= 1, f"Build failed: expected solid geometry, got {{len(solids)}} solids"
-assert len(solids) == 1, f"Disconnected geometry: {{len(solids)}} separate bodies. All components must be physically connected."
+assert len(solids) >= 1, f"Build failed: expected solid geometry, got {len(solids)} solids"
+assert len(solids) == 1, f"Disconnected geometry: {len(solids)} separate bodies. All components must be physically connected."
 bb = part.part.bounding_box()
 assert bb.size.X > 0 and bb.size.Y > 0, "Part has zero extent — geometry is invalid"
+
+# MANDATORY for parts where PARAMS specify absolute outer dimensions (e.g. frame_size):
+# Verify the actual bounding box matches the intended dimensions to within 0.5 mm.
+# Example: 500x500mm quadcopter frame with 5mm plate thickness
+# assert abs(bb.size.X - PARAMS["frame_size"]) < 0.5, f"X size mismatch: got {bb.size.X:.2f}mm, expected {PARAMS['frame_size']}mm"
+# assert abs(bb.size.Y - PARAMS["frame_size"]) < 0.5, f"Y size mismatch: got {bb.size.Y:.2f}mm, expected {PARAMS['frame_size']}mm"
+# assert abs(bb.size.Z - PARAMS["plate_thickness"]) < 0.2, f"Z thickness mismatch: got {bb.size.Z:.2f}mm, expected {PARAMS['plate_thickness']}mm"
 ```
+**When overall dimensions are specified in the prompt (e.g., "500×500mm frame"), you MUST add the dimension assertions above. A frame specified as 500mm that actually measures 490mm is a design defect.**
 
 ### Rule 9 — Intentional Edge Finishing (Fillets/Chamfers)
 Apply edge treatment AFTER the BuildPart block, intentionally, not everywhere blindly.
@@ -174,15 +236,82 @@ Apply edge treatment AFTER the BuildPart block, intentionally, not everywhere bl
 Use fillets for: structural corners under load, ergonomic grips, fatigue-critical radii
 Use chamfers for: assembly lead-ins, deburring edges, hole entrances on metal parts
 
+**CRITICAL: Never use arbitrary edge selection (longest/shortest/random index) for critical features.**
+Identify edges by **position** (bounding box proximity) or **topology** (face adjacency), never by sort order which changes when features are added/removed.
+
+**Selecting safe edges for outer corner fillets — POSITION-BASED approach:**
 ```python
 # After `with BuildPart() as part:` closes:
-if PARAMS["fillet_radius"] > 0:
-    try:
-        part.part = fillet(part.edges().filter_by(Axis.Z), radius=PARAMS["fillet_radius"])
-    except Exception as fe:
-        # Log the failure — do NOT silently swallow it with bare `pass`
-        # Silent pass means the model exports WITHOUT the fillet while appearing successful
-        print(f"[WARNING] Fillet skipped on complex edges: {fe}")
+bb = part.part.bounding_box()
+fillet_r = PARAMS["outer_fillet_r"]
+
+if fillet_r > 0:
+    # Select ONLY vertical edges that are near the outer bounding box perimeter
+    # An edge is "outer" if both its vertices are within 1mm of the bounding box min/max X or Y
+    all_z_edges = part.edges().filter_by(Axis.Z)
+    outer_edges = []
+    for e in all_z_edges:
+        verts = e.vertices()
+        if len(verts) >= 2:
+            v0, v1 = verts[0], verts[1]
+            # Check if BOTH vertices touch the outer boundary (within tolerance)
+            tol = 1.0
+            near_x_boundary = all(
+                abs(v.X - bb.min.X) < tol or abs(v.X - bb.max.X) < tol
+                for v in [v0, v1]
+            )
+            near_y_boundary = all(
+                abs(v.Y - bb.min.Y) < tol or abs(v.Y - bb.max.Y) < tol
+                for v in [v0, v1]
+            )
+            if near_x_boundary or near_y_boundary:
+                outer_edges.append(e)
+
+    if outer_edges:
+        try:
+            part.part = fillet(outer_edges, radius=fillet_r)
+        except Exception as fe:
+            # If fillet is MANDATORY (specified in requirements), raise:
+            raise RuntimeError(f"Mandatory outer fillet R{fillet_r} failed: {fe}") from fe
+
+    # Re-validate bounding box after filleting (fillets can shrink the envelope)
+    bb2 = part.part.bounding_box()
+    # Filleted envelope should be close to original (within fillet_r)
+```
+
+**BAD — fragile, changes when features are added/removed:**
+```python
+outer_edges = part.edges().filter_by(Axis.Z).sort_by(SortBy.LENGTH)[-4:]  # WRONG: arbitrary
+```
+
+### Rule 9a — Every Loop Variable MUST Be Used
+**CRITICAL BUG PATTERN:** Defining a loop variable but never using it inside the loop body.
+```python
+# BAD — slot_y_pos is computed but never referenced in the body:
+for slot_y_pos in [BS * 0.25, -BS * 0.25]:
+    with Locations((0, 0, T)):   # ← slot_y_pos not used! Both slots land at Y=0
+        ...
+
+# GOOD — loop variable is used to position the feature:
+for slot_y_pos in [BS * 0.25, -BS * 0.25]:
+    with Locations((0, slot_y_pos, T)):  # ← slot_y_pos controls Y position
+        ...
+```
+Before finalizing, mentally trace every `for` loop and verify the loop variable appears in the body.
+
+### Rule 9b — Every PARAMS Key MUST Be Used in Geometry
+If you define a key in PARAMS (e.g., `"internal_fillet_r": 1.5`), you MUST apply it somewhere in the geometry code. Unused PARAMS keys are a design defect — the user sees a slider that does nothing.
+
+After writing the script, audit: for each key in PARAMS, search for its usage. If unused, either apply it or remove it.
+
+### Rule 9c — Validate Features After Creation
+After creating a feature (holes, slots, fillets), verify it exists:
+```python
+# After applying internal fillets:
+# (At minimum, verify the part still has 1 solid and correct dimensions)
+assert len(part.part.solids()) == 1, "Fillet broke geometry into multiple solids"
+bb_post = part.part.bounding_box()
+assert abs(bb_post.size.X - PARAMS["frame_size"]) < fillet_r + 0.5, "Fillet changed outer dimensions unexpectedly"
 ```
 
 ### Rule 10 — Comments Must Match Actual Geometry
@@ -260,21 +389,80 @@ with BuildPart() as part:
 ```
 
 ### Positioning
-- `Locations((x, y, z))` — place next primitive at coordinate
-- `GridLocations(x_spacing, y_spacing, x_count, y_count)` — rectangular grid
-- `PolarLocations(radius, count, start_angle=0)` — circular pattern
-- `Location((x, y, z), (rx, ry, rz))` — position + euler rotation in one object
 
-⚠️ CRITICAL: `Rotation(x, y, z)` is NOT a context manager. Do NOT use `with Rotation(...):`.
-Instead, embed rotation directly in `Location`:
+⚠️ CRITICAL: `Locations` accepts **one or more** `Location` objects OR bare coordinate tuples.
+A bare tuple is treated as **XYZ translation only** — it does NOT contain rotation.
+To position AND rotate simultaneously, you MUST use `Location((x,y,z), (rx,ry,rz))`:
+
 ```python
-# CORRECT: combined translation + rotation
-with Locations(Location((mid_x, mid_y, mid_z), (0, 0, angle_deg))):
-    Box(length, width, height)
+# CORRECT: translation only
+with Locations((mx, my, T / 2.0)):
+    Cylinder(radius=pad_r, height=T)
 
-# WRONG: Rotation is not a context manager — causes TypeError
-with Rotation(0, 0, 45):
-    Box(length, width, height)  # ← TypeError: __exit__ missing
+# CORRECT: translation + rotation (e.g. angled arm beam)
+beam_ang = math.degrees(math.atan2(dy, dx))
+with Locations(Location((mid_x, mid_y, T / 2.0), (0, 0, beam_ang))):
+    Box(beam_len + 10.0, beam_w, T)
+
+# WRONG: this is NOT position + rotation — it creates TWO separate locations!
+with Locations((h_pos, 0, 0), (0, h_pos, 0)):  # ← generates 2 copies, not 1 rotated copy
+    Box(...)
+```
+
+- `GridLocations(x_spacing, y_spacing, x_count, y_count)` — rectangular grid
+- `PolarLocations(radius, count, start_angle=0)` — circular bolt pattern
+
+⚠️ CRITICAL: `Rotation(x, y, z)` is NOT a context manager. Do NOT use `with Rotation(...):`
+Embed rotation in `Location` as shown above.
+
+### True 90° Conical Countersunk Holes
+For flush-mount aerospace fasteners, standard flat-head countersinks have a 90° included angle (45° half-angle).
+Because \(\tan(45^\circ) = 1.0\), the conical taper depth is exactly \(\text{head\_radius} - \text{hole\_radius}\).
+Always use a true conical frustum (`Cone` with `bottom_radius` and `top_radius`) subtracted from the top surface:
+
+```python
+hole_r = PARAMS["m4_hole_dia"] / 2.0          # through-bore clearance radius (e.g. 2.5mm for M5)
+head_r = PARAMS["m4_head_dia"] / 2.0          # top surface countersink head radius (e.g. 4.5mm)
+cs_height = head_r - hole_r                    # exact 90-degree conical depth
+
+# At each hole location (bx, by):
+# 1. Conical countersink taper seated at top surface:
+with Locations((bx, by, T - cs_height / 2.0)):
+    Cone(bottom_radius=hole_r, top_radius=head_r, height=cs_height, mode=Mode.SUBTRACT)
+
+# 2. Straight through-bore penetrating full thickness:
+with Locations((bx, by, T / 2.0)):
+    Cylinder(radius=hole_r, height=T * 2.0, mode=Mode.SUBTRACT)
+```
+⚠️ Do NOT use a flat `Cylinder` for a countersink — that creates a counterbore, not a countersink!
+
+### Fastener Holes Aligned Along Diagonal Arms
+When placing mounting holes along diagonal structural arms, ALWAYS place them in the **rotated local coordinate frame of the arm**:
+```python
+# For an arm running from root (rx, ry) to motor (mx, my) at angle beam_ang:
+# Placing a 2-hole pattern spaced along the arm centerline:
+for arm_dist in [10.0, 25.0]:  # distances along arm from root
+    with Locations(Location((rx, ry, T / 2.0), (0, 0, beam_ang))):
+        with Locations((arm_dist, 0, 0)):  # offset is ALONG the arm axis, not global X!
+            Cylinder(radius=hole_r, height=T * 2.0, mode=Mode.SUBTRACT)
+```
+
+### Rounded Slots (Battery Straps / Cable Routing)
+For slots with semicircular ends (battery strap slots), use a rectangle + two semicircle endcaps:
+```python
+# Slot with width=slot_w, total_length=slot_len, centered at origin
+slot_w = PARAMS["strap_slot_width"]   # e.g. 6mm
+slot_len = PARAMS["strap_slot_length"]  # e.g. 40mm
+straight_len = slot_len - slot_w       # straight section between semicircle caps
+
+# Inside BuildPart:
+with BuildSketch(Plane.XY.offset(T)) as sk:
+    Rectangle(straight_len, slot_w)    # straight center section
+    with Locations((straight_len / 2, 0)):
+        Circle(slot_w / 2)             # right semicircle cap
+    with Locations((-straight_len / 2, 0)):
+        Circle(slot_w / 2)             # left semicircle cap
+extrude(amount=-T, mode=Mode.SUBTRACT)  # cut through plate downward
 ```
 
 ### Boolean Operations
@@ -486,9 +674,10 @@ export_step(part.part, OUTPUT_STEP)
 """
 
 
-CORRECTION_PROMPT_TEMPLATE = """The build123d CAD script failed to execute. Fix ALL issues and return corrected JSON.
+CORRECTION_PROMPT_TEMPLATE = """The build123d CAD script failed. Your job is to produce a fully corrected version.
+Analyse the error type carefully and fix ALL root causes — not just the surface symptom.
 
-## Original Request
+## Original User Request
 {user_prompt}
 
 ## Failed Script
@@ -496,42 +685,84 @@ CORRECTION_PROMPT_TEMPLATE = """The build123d CAD script failed to execute. Fix 
 {failed_code}
 ```
 
-## Error Traceback
+## Error / Assertion Traceback
 ```
 {error_traceback}
 ```
 
-## Correction Checklist
-Apply ALL of the following that are relevant:
+## Step-by-Step Diagnosis (work through ALL of these before writing corrected code)
 
-### Import Errors
-- Use `from build123d import *` — never import build123d submodules individually
-- Remove any import of: os, sys, subprocess, FreeCAD, Part, trimesh, numpy
+### 1. Error Classification
+Identify which category this error falls into:
 
-### Geometry Errors
-- Holes: use `Cylinder(..., mode=Mode.SUBTRACT)` INSIDE the `with BuildPart()` block
-- `extrude(amount=...)` must be called INSIDE the `with BuildPart()` block
-- `fillet(edges, radius)` must be called AFTER the `with BuildPart()` block closes
-- `Locations((x, y, z))` — note the double parentheses for a single point
+A. **Syntax / Import Error** — SyntaxError, NameError, ImportError
+B. **Build123d API Error** — TypeError, AttributeError on build123d objects
+C. **Geometry Assertion Error** — AssertionError from validation block (disconnected bodies, zero-extent, dimension mismatch)
+D. **Topology Error** — OpenCASCADE kernel error during boolean operation or fillet
+E. **Dimension / Logic Error** — Part builds but dimensions are wrong vs. user specification
 
-### Pattern Errors
-- `GridLocations(x_spacing, y_spacing, x_count, y_count)` requires all 4 args
-- `PolarLocations(radius, count)` requires at least 2 args
+### 2. Fix Checklist by Error Category
 
-### Export Errors
-- Use `export_stl(part.part, OUTPUT_STL)` — OUTPUT_STL is pre-set by the runtime
-- Use `export_step(part.part, OUTPUT_STEP)` — OUTPUT_STEP is pre-set by the runtime
-- Do NOT redefine OUTPUT_STL or OUTPUT_STEP in the script
+**Category A — Import/Syntax:**
+- Use `from build123d import *` only
+- Never import: os, sys, subprocess, FreeCAD, Part, trimesh, numpy, cadquery
+- Check for unterminated strings, missing colons, wrong indentation
 
-### Validation
-- After the BuildPart block, add: assert len(part.part.solids()) >= 1
-- If solids count > 1: all components must be fused (physically connected)
+**Category B — API Usage:**
+- `Locations((x, y, z))` — double parentheses for a single point. `Locations((x,y,z), (x2,y2,z2))` creates TWO locations, not one with rotation!
+- To apply position AND rotation: use `Locations(Location((x, y, z), (rx, ry, rz)))` — never pass two tuples to Locations
+- `GridLocations(x_spacing, y_spacing, x_count, y_count)` — all 4 args required
+- `extrude(amount=...)` must be INSIDE `with BuildPart()` block
+- `fillet(edges, radius)` must be OUTSIDE/AFTER `with BuildPart()` block
+- `Rotation(x,y,z)` is NOT a context manager — use `Location((x,y,z), (rx,ry,rz))` instead
 
-### Polygon Winding
-- Do NOT use `sx * coord, sy * coord` in Polygon vertices — this reverses winding
-- Use `mirror()` instead for symmetric geometry
+**Category C — Geometry Assertion (disconnected solid):**
+- `AssertionError: Disconnected geometry: N separate bodies` means arms/features are not physically touching the main body
+- ALWAYS add overlap (+8 to +12mm) to arm beams so they fuse into the fuselage
+- Motor pads need to be wide enough to overlap with beam ends
+- If mirroring disconnects geometry, switch to explicit symmetric placement with loop `for sx in [-1,1]: for sy in [-1,1]:`
 
-Return ONLY the corrected JSON — no markdown fences, no extra explanation.
+**Category C — Geometry Assertion (dimension mismatch):**
+- If `bb.size.X != expected`: motor pad centres are placed at the wrong offset
+- For a 500mm frame: motor pad centres must be at ±(500/2 - pad_radius) from origin
+- Validate: `motor_center_offset + pad_radius == frame_size / 2`
+- The arm beam + pad must REACH the outer edge, not fall short
+
+**Category D — Topology (fillet/boolean fails):**
+- Narrow edges or near-zero faces cause fillet failures — use a smaller radius
+- Use targeted edge selection instead of `filter_by(Axis.Z)` on ALL edges:
+  ```python
+  outer_edges = part.edges().filter_by(Axis.Z).sort_by(SortBy.LENGTH)[-4:]
+  part.part = fillet(outer_edges, radius=fillet_r)
+  ```
+- If boolean subtract fails: ensure the cutting body fully penetrates the main body (use `height=T * 2.0` for through-holes)
+
+**Category E — Logic / Dimension Error:**
+- Recalculate motor positions: for a square frame of side S, motor centres at ±(S/2 - pad_r)
+- Verify bounding box assertions match PARAMS values
+- If `internal_fillet_radius` is defined in PARAMS but never used, either apply it or remove from PARAMS
+
+### 3. STRICT CAD CODE RULES TO ENFORCE DURING CORRECTION
+- [ ] ALL geometry creation and modification MUST occur inside the active `with BuildPart() as part:` context.
+- [ ] Never leave a requested feature outside `with BuildPart() as part:`.
+- [ ] Every parameter in PARAMS MUST either be used in geometry or explicitly removed.
+- [ ] Every requested feature MUST create real geometry. Never use `pass` as a substitute.
+- [ ] Never use `try/except` to silently skip a required feature. If a required feature fails, raise `RuntimeError`.
+- [ ] Conical countersinks: use `Cone(bottom_radius=hole_r, top_radius=head_r, height=cs_depth)` at `Z = T - cs_depth / 2.0`.
+- [ ] For rotated features, calculate and validate their final global X/Y coordinates using `Location((x,y,z), (rx,ry,rz))`.
+- [ ] Verify all cuts intersect the target solid in Z.
+- [ ] Verify all added solids intersect the main body (controlled overlap).
+- [ ] Verify the final bounding box against the required dimensions.
+- [ ] assert len(part.part.solids()) == 1 — exactly one connected solid body.
+- [ ] Check for unused variables and unreachable/dead code.
+- [ ] Check Python indentation and scope before returning code.
+
+### 📋 MANDATORY FINAL CHECK
+Feature → Expected → Implemented → Validated
+Do NOT export if any requested feature is missing, failed, disconnected, misplaced, or unvalidated.
+The final STEP/STL export must happen ONLY after every validation passes.
+
+Return ONLY the corrected JSON — no markdown fences, no explanation outside the JSON.
 """
 
 

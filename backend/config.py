@@ -1,6 +1,11 @@
 import os
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Ensure .env is loaded before reading any environment variables
+load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv()
 
 # Base directories
 BASE_DIR = Path(__file__).resolve().parent

@@ -120,8 +120,14 @@ async def test_fastapi_routes_async():
             assert "mesh_url" in mod_data
             assert len(mod_data["parameters"]) >= 1
             print(f"[OK] POST /api/modify -> part='{mod_data['part_name']}' | script={mod_data['script_id']} | model={mod_data['model_used']} | {mod_data['recomputation_time_ms']}ms")
+            # 8. GET /api/download/{script_id}/{fmt}
+            res_dl = await client.get(f"/api/download/{gen_script_id}/stl")
+            assert res_dl.status_code == 200
+            assert len(res_dl.content) > 0
+            assert "attachment" in res_dl.headers.get("content-disposition", "")
+            print(f"[OK] GET /api/download/{gen_script_id}/stl -> 200 OK ({len(res_dl.content)} bytes)")
         else:
-            print("[SKIP] POST /api/modify (no API key or generate skipped)")
+            print("[SKIP] POST /api/modify & GET /api/download (no API key or generate skipped)")
 
     print("\n[SUCCESS] ALL FASTAPI ASYNC ENDPOINT TESTS PASSED!")
 

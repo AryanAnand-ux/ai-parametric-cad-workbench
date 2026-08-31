@@ -109,7 +109,8 @@ class RAGService:
         from rag_corpus.examples_week4 import EXAMPLES as W4
         from rag_corpus.examples_week5 import EXAMPLES as W5
         from rag_corpus.examples_week8 import EXAMPLES as W8
-        ALL_EXAMPLES = W4 + W5 + W8
+        from rag_corpus.examples_engineering import EXAMPLES as W_ENG
+        ALL_EXAMPLES = W4 + W5 + W8 + W_ENG
 
         collection = _get_collection()
 

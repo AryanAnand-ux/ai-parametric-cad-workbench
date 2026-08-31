@@ -237,17 +237,39 @@ def _build_wrapper(python_code: str, stl_posix: str, step_posix: str) -> str:
     Wraps the user script with OUTPUT_STL / OUTPUT_STEP injection
     and a try/except that sends tracebacks to stderr.
 
-    OUTPUT_STL and OUTPUT_STEP are always injected here — the LLM
-    should never redefine them (Rule 1 / Rule 11 of the engineering spec).
-    If the script redefines them, the outer assignments are ignored by Python
-    (last write wins), but we inject first so generated code can optionally
-    define fallbacks without breaking the pipeline.
+    On Windows, we also inject os.add_dll_directory() calls for
+    cadquery_ocp_novtk.libs so the OpenCASCADE DLLs are resolvable
+    by the subprocess even when Windows Application Control policies
+    would otherwise block native extension loading.
     """
+    import site
+    import os as _os
+
+    # Find the cadquery OCP libs folder relative to current site-packages
+    ocp_libs_dir = ""
+    for sp in site.getsitepackages():
+        candidate = _os.path.join(sp, "cadquery_ocp_novtk.libs")
+        if _os.path.isdir(candidate):
+            ocp_libs_dir = candidate.replace("\\", "\\\\")
+            break
+
+    dll_injection = ""
+    if ocp_libs_dir:
+        dll_injection = f'''\
+# ── DLL search path: OpenCASCADE native libs (Windows) ──────────────────────
+import os as _os_dll
+_ocp_libs = r"{ocp_libs_dir}"
+if hasattr(_os_dll, "add_dll_directory") and _os_dll.path.isdir(_ocp_libs):
+    _os_dll.add_dll_directory(_ocp_libs)
+# ────────────────────────────────────────────────────────────────────────────
+'''
+
     indented = "\n".join(
         "    " + line if line.strip() else line
         for line in python_code.splitlines()
     )
     return f'''import sys
+{dll_injection}
 # Runtime-injected export paths (do NOT redefine these in generated scripts)
 OUTPUT_STL  = r"{stl_posix}"
 OUTPUT_STEP = r"{step_posix}"

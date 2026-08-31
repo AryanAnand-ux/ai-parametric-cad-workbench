@@ -193,7 +193,8 @@ def _parse_response(raw_text: str) -> DualOutputPayload:
 # ---------------------------------------------------------------------------
 
 def _call_gemini(prompt: str, system: str, model: str = "gemini-2.5-flash") -> str:
-    """Calls a Gemini model with native JSON mode enforcement."""
+    """Calls a Gemini model with native JSON mode enforcement and 503 retry."""
+    import time as _time
     from google import genai
     from google.genai import types
 
@@ -202,26 +203,37 @@ def _call_gemini(prompt: str, system: str, model: str = "gemini-2.5-flash") -> s
         raise RuntimeError("GEMINI_API_KEY not configured.")
 
     client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
-        model=model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            response_mime_type="application/json",
-            temperature=0.2,
-            max_output_tokens=8192,
-        )
-    )
-    return response.text
+    
+    last_err = None
+    for attempt in range(2):
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system,
+                    response_mime_type="application/json",
+                    temperature=0.2,
+                    max_output_tokens=8192,
+                )
+            )
+            return response.text
+        except Exception as e:
+            last_err = e
+            if "503" in str(e) or "UNAVAILABLE" in str(e):
+                _time.sleep(1.5)
+                continue
+            raise e
+    raise last_err
 
 
 # ---------------------------------------------------------------------------
-# Groq Client (Tier 4 Fallback: llama-3.3-70b-versatile)
+# Groq Client (Fallback: llama-3.3-70b-versatile)
 # ---------------------------------------------------------------------------
 
 def _call_groq(prompt: str, system: str) -> str:
     """
-    Calls Groq Llama-3.3-70B as a high-speed tertiary fallback.
+    Calls Groq Llama-3.3-70B as a high-speed fallback.
     Uses JSON mode enforcement via response_format.
     """
     from groq import Groq
@@ -250,7 +262,7 @@ def _call_groq(prompt: str, system: str) -> str:
 
 class LLMService:
     """
-    4-Tier LLM orchestrator with build123d context and RAG dynamic few-shot injection.
+    Multi-Tier LLM orchestrator with build123d context and RAG dynamic few-shot injection.
     """
 
     MAX_RETRIES = 3
@@ -272,54 +284,43 @@ class LLMService:
     @classmethod
     def _call_with_fallback(cls, prompt: str, system: str) -> Tuple[DualOutputPayload, str]:
         """
-        4-tier fallback chain with inline schema parsing and validation.
+        Multi-tier fallback chain with inline schema parsing and validation.
         Returns (DualOutputPayload, model_name_used).
         """
         errors = []
+        gemini_models = [
+            "gemini-3.5-flash-lite",
+            "gemini-flash-lite-latest",
+            "gemini-3.1-flash-lite",
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-flash-latest",
+            "gemini-3.7-flash",
+            "gemini-2.5-flash",
+        ]
 
-        # --- Tier 1: Gemini 2.5 Flash ---
-        try:
-            logger.info("[LLM] Calling Gemini 2.5 Flash (Tier 1)...")
-            raw = _call_gemini(prompt, system, model="gemini-2.5-flash")
-            logger.info(f"[LLM] Gemini 2.5 Flash responded ({len(raw)} chars)")
-            payload = _parse_response(raw)
-            return payload, "gemini-2.5-flash"
-        except Exception as e:
-            errors.append(f"gemini-2.5-flash: {e}")
-            logger.warning(f"[LLM] Tier 1 failed or invalid JSON: {e}")
+        for m in gemini_models:
+            try:
+                logger.info(f"[LLM] Calling Gemini ({m})...")
+                raw = _call_gemini(prompt, system, model=m)
+                logger.info(f"[LLM] Gemini ({m}) responded ({len(raw)} chars)")
+                payload = _parse_response(raw)
+                return payload, m
+            except Exception as e:
+                errors.append(f"{m}: {e}")
+                logger.warning(f"[LLM] Model {m} failed or invalid JSON: {e}")
 
-        # --- Tier 2: Gemini 3.7 Flash ---
-        try:
-            logger.info("[LLM] Calling Gemini 3.7 Flash (Tier 2)...")
-            raw = _call_gemini(prompt, system, model="gemini-3.7-flash")
-            logger.info(f"[LLM] Gemini 3.7 Flash responded ({len(raw)} chars)")
-            payload = _parse_response(raw)
-            return payload, "gemini-3.7-flash"
-        except Exception as e:
-            errors.append(f"gemini-3.7-flash: {e}")
-            logger.warning(f"[LLM] Tier 2 failed or invalid JSON: {e}")
-
-        # --- Tier 3: Gemini Flash Latest ---
-        try:
-            logger.info("[LLM] Calling Gemini Flash Latest (Tier 3)...")
-            raw = _call_gemini(prompt, system, model="gemini-flash-latest")
-            logger.info(f"[LLM] Gemini Flash Latest responded ({len(raw)} chars)")
-            payload = _parse_response(raw)
-            return payload, "gemini-flash-latest"
-        except Exception as e:
-            errors.append(f"gemini-flash-latest: {e}")
-            logger.warning(f"[LLM] Tier 3 failed or invalid JSON: {e}")
-
-        # --- Tier 4: Groq Llama-3.3-70B ---
-        try:
-            logger.info("[LLM] Calling Groq Llama-3.3-70B (Tier 4)...")
-            raw = _call_groq(prompt, system)
-            logger.info(f"[LLM] Groq Llama-3.3-70B responded ({len(raw)} chars)")
-            payload = _parse_response(raw)
-            return payload, "groq-llama-3.3-70b"
-        except Exception as e:
-            errors.append(f"groq-llama-3.3-70b: {e}")
-            logger.error("[LLM] All 4 tiers failed.")
+        # Fallback to Groq if key exists
+        if GROQ_API_KEY:
+            try:
+                logger.info("[LLM] Calling Groq Llama-3.3-70B...")
+                raw = _call_groq(prompt, system)
+                logger.info(f"[LLM] Groq Llama-3.3-70B responded ({len(raw)} chars)")
+                payload = _parse_response(raw)
+                return payload, "groq-llama-3.3-70b"
+            except Exception as e:
+                errors.append(f"groq-llama-3.3-70b: {e}")
+                logger.error("[LLM] Groq tier failed.")
 
         raise RuntimeError("All LLM providers failed.\n" + "\n".join(errors))
 
@@ -386,9 +387,7 @@ class LLMService:
         Preserves PARAMS block structure and variable names where possible.
         Returns (DualOutputPayload, model_name_used).
         """
-        import json as _json
-
-        existing_params_json = _json.dumps(
+        existing_params_json = json.dumps(
             [p.model_dump() if hasattr(p, 'model_dump') else p for p in existing_parameters],
             indent=2
         )
