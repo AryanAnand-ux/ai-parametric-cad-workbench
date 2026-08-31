@@ -1,16 +1,39 @@
-# React + Vite
+# AI Parametric CAD Workbench — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A Technical Neobrutalist WebGL user interface for natural language 3D CAD modeling, live parametric recomputation, and conversational engineering adjustments.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🚀 Tech Stack
 
-## React Compiler
+- **React 19** + **Vite 8** (Fast HMR & Optimized Bundling)
+- **Three.js** + **@react-three/fiber** + **@react-three/drei** (3D WebGL Canvas)
+- **Axios** (API Client with 180s self-correction timeout)
+- **Design System**: Technical Neobrutalist Bento Grid (2.5px solid outlines, hard 4px drop-shadows, Space Grotesk typography)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the Oxlint configuration
+## 📦 Key Components
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+| Component | Path | Description |
+|---|---|---|
+| `App.jsx` | `src/App.jsx` | Bento Grid shell, prompt inputs, Chat-to-Modify panel, and state management |
+| `Viewer3D.jsx` | `src/components/Viewer3D.jsx` | R3F 3D Canvas, STLLoader, OrbitControls, 4 PBR materials, 3D Bounding Box Annotations |
+| `ParameterSlider.jsx` | `src/components/ParameterSlider.jsx` | Parametric dimension sliders with unit detection, `+`/`-` steppers, and reset buttons |
+| `api.js` | `src/api.js` | Axios API client targeting `/api/generate`, `/api/modify`, `/api/recompute`, and `/api/health` |
+
+---
+
+## 🛠️ Development Setup
+
+```bash
+# Install dependencies
+npm install
+
+# Start local development server (proxies to http://localhost:8000)
+npm run dev
+
+# Build production bundle
+npm run build
+```
+
