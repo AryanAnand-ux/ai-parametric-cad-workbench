@@ -36,8 +36,8 @@ app = FastAPI(
     title="AI-Driven Parametric CAD Workbench API",
     description=(
         "Natural Language to 3D Solid Modeling Platform. "
-        "Generates parametric Python CAD scripts via Gemini 2.0 Flash (primary) "
-        "with Gemini 2.5 Flash + Groq Llama-3.3-70B fallback. "
+        "Generates parametric Python CAD scripts via Gemini Multi-Model Fallback "
+        "(gemini-3.5-flash-lite -> gemini-flash-lite-latest -> gemini-3.1-flash-lite -> Groq Llama-3.3-70B). "
         "Supports sub-200ms slider recomputation and automated self-correction."
     ),
     version="2.0.0"

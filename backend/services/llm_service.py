@@ -1,17 +1,16 @@
 """
-LLM Service — 3-Tier Dual-Model Strategy with RAG Context Injection
+LLM Service — Multi-Tier Model Strategy with RAG Context Injection
 ====================================================================
-Tier 1 (Primary)   : Gemini 2.0 Flash  (google-genai, native JSON mode, free tier)
-Tier 2 (Secondary) : Gemini 2.5 Flash  (google-genai, separate quota pool)
-Tier 3 (Fallback)  : Groq Llama-3.3-70B (10x faster inference, always-on free tier)
+Tier 1 (Primary)   : gemini-3.5-flash-lite / gemini-flash-lite-latest (google-genai, native JSON mode)
+Tier 2 (Secondary) : gemini-3.1-flash-lite / gemini-3.6-flash
+Tier 3 (Fallback)  : Groq Llama-3.3-70B (high-speed inference fallback)
 
 Flow:
   1. Retrieve top-3 similar build123d CAD examples from ChromaDB via RAG.
   2. Dynamically construct system prompt with few-shot example block.
-  3. Try Gemini 2.0 Flash first.
-  4. Fallback to Gemini 2.5 Flash if quota/rate limited.
-  5. Fallback to Groq Llama-3.3-70B if both Gemini fail.
-  6. Self-correction loop (up to 3 retries) on execution error.
+  3. Try Gemini models in prioritized fallback order.
+  4. Fallback to Groq Llama-3.3-70B if Gemini tiers fail.
+  5. Self-correction loop (up to 3 retries) on execution or watertight topology error.
 """
 
 import os
