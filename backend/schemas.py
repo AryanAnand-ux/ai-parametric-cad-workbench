@@ -8,8 +8,11 @@ Defines the Dual-Output API contract:
   - RecomputeRequest / RecomputeResponse: /api/recompute endpoint contracts.
   - ModifyRequest / ModifyResponse: /api/modify (Chat-to-Modify) endpoint contracts.
 """
+import ast
+import math
+import re
 from typing import List, Literal, Optional, Dict, Any
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, BaseModel, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -22,6 +25,9 @@ class CADParameter(BaseModel):
     """
     name: str = Field(
         ...,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z_][A-Za-z0-9_]*$",
         description="Python variable name as it appears in the PARAMS dict (e.g. 'bracket_length')"
     )
     label: str = Field(
@@ -75,6 +81,8 @@ class DualOutputPayload(BaseModel):
     """
     python_code: str = Field(
         ...,
+        min_length=1,
+        max_length=500_000,
         description=(
             "Complete, executable Python script using the build123d library. "
             "MUST begin with a PARAMS = {...} dictionary block. "
@@ -88,12 +96,86 @@ class DualOutputPayload(BaseModel):
     )
     part_name: str = Field(
         ...,
+        min_length=1,
+        max_length=120,
         description="Short descriptive name for the generated part (e.g. 'Mounting Bracket')"
     )
     description: str = Field(
         ...,
         description="One-sentence description of the generated part and its key design features"
     )
+    design_mode: Literal["single_solid", "assembly"] = Field(
+        default="single_solid",
+        description=(
+            "single_solid: exactly one watertight solid required. "
+            "assembly: multiple named components allowed, each validated separately."
+        )
+    )
+    components: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "For assembly mode: list of component names that must exist in the script "
+            "(e.g. ['chassis', 'wheel_fl', 'motor_fl']). "
+            "Each component must be assigned to a variable with this exact name."
+        )
+    )
+
+    @model_validator(mode="after")
+    def validate_design_mode_consistency(self) -> "DualOutputPayload":
+        """Keep assembly metadata consistent with the generated script contract."""
+        components = self.components or []
+        text = f"{self.part_name} {self.description}".lower()
+        says_assembly = any(
+            phrase in text
+            for phrase in (
+                "mechanical assembly",
+                "complete assembly",
+                "multi-part assembly",
+                "multiple components",
+            )
+        )
+        single_solid_assert = re.search(
+            r"assert\s+len\s*\(\s*solids\s*\)\s*==\s*1|"
+            r"assert\s+len\s*\(\s*part\.part\.solids\s*\(\s*\)\s*\)\s*==\s*1",
+            self.python_code,
+        )
+
+        if self.design_mode == "single_solid":
+            if components:
+                raise ValueError("single_solid payloads must not declare assembly components")
+            if says_assembly:
+                raise ValueError("description/part_name describes an assembly but design_mode is single_solid")
+
+        if self.design_mode == "assembly":
+            if not components:
+                raise ValueError("assembly payloads must declare at least one component")
+            if len(set(components)) != len(components):
+                raise ValueError("assembly components must be unique")
+            invalid_names = [name for name in components if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name)]
+            if invalid_names:
+                raise ValueError(f"assembly components must be valid Python identifiers: {', '.join(invalid_names)}")
+            try:
+                tree = ast.parse(self.python_code)
+            except SyntaxError as exc:
+                raise ValueError(f"python_code syntax error: {exc}") from exc
+            assigned_names = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign):
+                    assigned_names.update(
+                        target.id for target in node.targets if isinstance(target, ast.Name)
+                    )
+                elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                    assigned_names.add(node.target.id)
+            missing_components = sorted(set(components) - assigned_names)
+            if missing_components:
+                raise ValueError(
+                    "assembly components must be assigned in python_code: "
+                    + ", ".join(missing_components)
+                )
+            if single_solid_assert:
+                raise ValueError("assembly payloads must not assert exactly one solid")
+
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +187,8 @@ class GenerateRequest(BaseModel):
     prompt: str = Field(
         ...,
         description="Natural language description of the 3D part to generate",
-        min_length=5
+        min_length=5,
+        max_length=2000,
     )
 
 
@@ -117,6 +200,8 @@ class GenerateResponse(BaseModel):
     description: str
     python_code: str
     parameters: List[CADParameter]
+    design_mode: str = Field(default="single_solid")
+    components: Optional[List[str]] = None
     mesh_url: Optional[str] = None
     step_url: Optional[str] = None
     mesh_info: Optional[Dict[str, Any]] = None
@@ -133,12 +218,47 @@ class GenerateResponse(BaseModel):
 
 class RecomputeRequest(BaseModel):
     """Request payload for POST /api/recompute"""
-    script_id: str
-    python_code: str
+    script_id: str = Field(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+    python_code: str = Field(..., min_length=1, max_length=500_000)
     updated_parameters: Dict[str, float] = Field(
         ...,
+        max_length=64,
         description="Dictionary of parameter names to updated float values from UI sliders"
     )
+    parameters: List[CADParameter] = Field(default_factory=list, max_length=64)
+    design_mode: Literal["single_solid", "assembly"] = Field(default="single_solid")
+    components: Optional[List[str]] = None
+
+    @model_validator(mode="after")
+    def validate_updated_parameters(self) -> "RecomputeRequest":
+        try:
+            tree = ast.parse(self.python_code)
+            params_node = next(
+                node for node in tree.body
+                if isinstance(node, ast.Assign)
+                and any(isinstance(target, ast.Name) and target.id == "PARAMS" for target in node.targets)
+            )
+            params = ast.literal_eval(params_node.value)
+        except (StopIteration, SyntaxError, ValueError, TypeError) as exc:
+            raise ValueError("python_code must contain a literal PARAMS dictionary") from exc
+
+        if not isinstance(params, dict):
+            raise ValueError("PARAMS must be a dictionary")
+        unknown = set(self.updated_parameters) - set(params)
+        if unknown:
+            raise ValueError(f"Unknown parameter(s): {', '.join(sorted(unknown))}")
+        if any(not math.isfinite(value) for value in self.updated_parameters.values()):
+            raise ValueError("Updated parameters must be finite numbers")
+        definitions = {parameter.name: parameter for parameter in self.parameters}
+        for name, value in self.updated_parameters.items():
+            definition = definitions.get(name)
+            if definition is None:
+                continue
+            if not definition.min <= value <= definition.max:
+                raise ValueError(f"Parameter '{name}' value is outside its declared range")
+            if definition.type == "integer" and not float(value).is_integer():
+                raise ValueError(f"Parameter '{name}' must be a whole number")
+        return self
 
 
 class RecomputeResponse(BaseModel):
@@ -149,6 +269,8 @@ class RecomputeResponse(BaseModel):
     step_url: Optional[str] = None
     mesh_info: Optional[Dict[str, Any]] = None
     recomputation_time_ms: Optional[int] = None   # Consistent Optional with GenerateResponse
+    design_mode: str = Field(default="single_solid")
+    components: Optional[List[str]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -159,25 +281,35 @@ class ModifyRequest(BaseModel):
     """Request payload for POST /api/modify (Chat-to-Modify)"""
     script_id: str = Field(
         ...,
+        min_length=1,
+        max_length=100,
+        pattern=r"^[A-Za-z0-9_-]+$",
         description="ID of the existing generated script to modify"
     )
     python_code: str = Field(
         ...,
+        min_length=1,
+        max_length=500_000,
         description="The current build123d Python script to be modified"
     )
     part_name: str = Field(
         ...,
+        min_length=1,
+        max_length=120,
         description="Current part name for context"
     )
     modification_prompt: str = Field(
         ...,
         description="Natural language description of the desired change",
-        min_length=3
+        min_length=3,
+        max_length=2000,
     )
     parameters: List[CADParameter] = Field(
-        default=[],
+        default_factory=list,
         description="Existing parameter definitions for context preservation"
     )
+    design_mode: Literal["single_solid", "assembly"] = Field(default="single_solid")
+    components: Optional[List[str]] = None
 
 
 class ModifyResponse(BaseModel):
@@ -193,6 +325,8 @@ class ModifyResponse(BaseModel):
     mesh_info: Optional[Dict[str, Any]] = None
     recomputation_time_ms: Optional[int] = None
     model_used: Optional[str] = None
+    design_mode: str = Field(default="single_solid")
+    components: Optional[List[str]] = None
     modification_summary: Optional[str] = Field(
         default=None,
         description="The modification prompt that produced this version"

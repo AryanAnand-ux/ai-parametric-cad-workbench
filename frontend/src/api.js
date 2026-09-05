@@ -10,10 +10,29 @@ import axios from 'axios';
 // Use empty string in dev (Vite proxy handles it).
 // In production, set VITE_API_URL in frontend/.env
 const BASE_URL = import.meta.env.VITE_API_URL || '';
+const GENERATION_TIMEOUT = Number(import.meta.env.VITE_GENERATION_TIMEOUT_MS || 300_000);
+
+export function resolveAssetUrl(path) {
+  if (!path) return null;
+  const baseUrl = BASE_URL.replace(/\/+$/, '');
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${baseUrl}${cleanPath}`;
+}
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 180_000,   // 180s (3 min) — accommodates multi-retry LLM self-correction loops
+  timeout: 30_000,
+});
+
+const generationApi = axios.create({
+  baseURL: BASE_URL,
+  timeout: GENERATION_TIMEOUT,
+});
+
+// Recompute can be slow for complex models (40-60s on Windows with OCC booleans)
+const recomputeApi = axios.create({
+  baseURL: BASE_URL,
+  timeout: 120_000,
 });
 
 /**
@@ -22,7 +41,7 @@ const api = axios.create({
  * @returns {Promise<GenerateResponse>}
  */
 export async function generatePart(prompt) {
-  const { data } = await api.post('/api/generate', { prompt });
+  const { data } = await generationApi.post('/api/generate', { prompt });
   return data;
 }
 
@@ -33,11 +52,21 @@ export async function generatePart(prompt) {
  * @param {Record<string, number>} updatedParameters
  * @returns {Promise<RecomputeResponse>}
  */
-export async function recomputePart(scriptId, pythonCode, updatedParameters) {
-  const { data } = await api.post('/api/recompute', {
+export async function recomputePart(
+  scriptId,
+  pythonCode,
+  updatedParameters,
+  parameters = [],
+  designMode = 'single_solid',
+  components = null,
+) {
+  const { data } = await recomputeApi.post('/api/recompute', {
     script_id: scriptId,
     python_code: pythonCode,
     updated_parameters: updatedParameters,
+    parameters,
+    design_mode: designMode,
+    components,
   });
   return data;
 }
@@ -61,13 +90,23 @@ export async function healthCheck() {
  * @param {Array} parameters - Current CADParameter array for context preservation
  * @returns {Promise<ModifyResponse>}
  */
-export async function modifyPart(scriptId, pythonCode, partName, modificationPrompt, parameters = []) {
-  const { data } = await api.post('/api/modify', {
+export async function modifyPart(
+  scriptId,
+  pythonCode,
+  partName,
+  modificationPrompt,
+  parameters = [],
+  designMode = 'single_solid',
+  components = null,
+) {
+  const { data } = await generationApi.post('/api/modify', {
     script_id: scriptId,
     python_code: pythonCode,
     part_name: partName,
     modification_prompt: modificationPrompt,
     parameters,
+    design_mode: designMode,
+    components,
   });
   return data;
 }

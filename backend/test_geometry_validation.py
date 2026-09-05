@@ -32,6 +32,16 @@ export_stl(part.part, OUTPUT_STL)
 export_step(part.part, OUTPUT_STEP)
 """
 
+STL_ONLY_SCRIPT = """
+PARAMS = {"length": 20.0}
+from build123d import *
+
+with BuildPart() as part:
+    Box(PARAMS["length"], 20, 10)
+
+export_stl(part.part, OUTPUT_STL)
+"""
+
 @pytest.mark.asyncio
 async def test_disconnected_bodies_detected():
     """Confirms that trimesh.graph.connected_components flags multiple disjoint bodies."""
@@ -44,6 +54,25 @@ async def test_disconnected_bodies_detected():
     assert mesh_info["body_count"] == 2
     assert mesh_info["is_valid"] is False
     assert any("disconnected bodies" in w for w in mesh_info["geometry_warnings"])
+
+
+@pytest.mark.asyncio
+async def test_multi_body_assembly_passes_mode_aware_validation():
+    """A valid explicit assembly may contain multiple watertight bodies."""
+    result = await CADRunner.execute_script_async(
+        script_id="test_geo_assembly",
+        python_code=DISCONNECTED_BODIES_SCRIPT,
+        design_mode="assembly",
+        component_names=["body_1", "body_2"],
+    )
+    assert result["status"] == "success"
+    mesh_info = result["mesh_info"]
+    assert mesh_info["validation_mode"] == "assembly"
+    assert mesh_info["body_count"] == 2
+    assert mesh_info["component_count"] == 2
+    assert mesh_info["is_valid"] is True
+    assert len(mesh_info["geometry_warnings"]) == 0
+
 
 @pytest.mark.asyncio
 async def test_connected_monolithic_solid_passes():
@@ -58,3 +87,15 @@ async def test_connected_monolithic_solid_passes():
     assert mesh_info["is_watertight"] is True
     assert mesh_info["is_valid"] is True
     assert len(mesh_info["geometry_warnings"]) == 0
+
+
+@pytest.mark.asyncio
+async def test_missing_step_export_is_execution_failure():
+    """A preview mesh without its production STEP export must not be accepted."""
+    result = await CADRunner.execute_script_async(
+        script_id="test_geo_missing_step",
+        python_code=STL_ONLY_SCRIPT
+    )
+    assert result["status"] == "error"
+    assert result["step_url"] is None
+    assert "STEP" in result["stderr"]

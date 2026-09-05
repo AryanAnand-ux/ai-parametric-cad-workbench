@@ -43,7 +43,9 @@ BUILD123D_SYSTEM_PROMPT = """You are a senior mechanical CAD engineer writing Py
     }}
   ],
   "part_name": "<Short Descriptive Name>",
-  "description": "<One sentence describing what this part is and does>"
+  "description": "<One sentence describing what this part is and does>",
+  "design_mode": "single_solid",
+  "components": null
 }}
 
 ## 🚨 STRICT CAD CODE RULES (MANDATORY ENGINEERING CONTRACT)
@@ -59,7 +61,7 @@ You MUST follow every single one of these rules without exception:
 9. **Verify all cuts intersect the target solid in Z** (e.g. cutting tools must overlap the plate's Z range).
 10. **Verify all added solids intersect the main body** (enforce overlap, prevent disconnected bodies).
 11. **Verify the final bounding box against the required dimensions.**
-12. **Verify exactly one connected solid** (`assert len(part.part.solids()) == 1`) unless multiple bodies are explicitly requested.
+12. **Use mode-aware topology validation.** For `single_solid`, verify exactly one connected solid (`assert len(part.part.solids()) == 1`). For an explicit mechanical assembly or multi-body request, set `"design_mode": "assembly"`, provide `"components": [...]`, and validate that every component/body exists instead of asserting exactly one solid.
 13. **Check for unused variables and unreachable/dead code.**
 14. **Check Python indentation and scope before returning code.**
 15. **Execute a final static review of the complete script from top to bottom before export.**
@@ -229,6 +231,16 @@ assert bb.size.X > 0 and bb.size.Y > 0, "Part has zero extent — geometry is in
 # assert abs(bb.size.Z - PARAMS["plate_thickness"]) < 0.2, f"Z thickness mismatch: got {bb.size.Z:.2f}mm, expected {PARAMS['plate_thickness']}mm"
 ```
 **When overall dimensions are specified in the prompt (e.g., "500×500mm frame"), you MUST add the dimension assertions above. A frame specified as 500mm that actually measures 490mm is a design defect.**
+
+For explicit multi-body mechanical assemblies:
+```python
+# --- Assembly Validation ---
+assert part.part is not None, "Build failed: assembly is None"
+solids = part.part.solids()
+assert len(solids) >= 1, f"Build failed: expected assembly geometry, got {len(solids)} solids"
+# Do NOT assert len(solids) == 1 for assemblies.
+```
+Return `"design_mode": "assembly"` and a non-empty `"components"` list. Do not describe the result as a complete mechanical assembly while returning `"design_mode": "single_solid"`.
 
 ### Rule 9 — Intentional Edge Finishing (Fillets/Chamfers)
 Apply edge treatment AFTER the BuildPart block, intentionally, not everywhere blindly.
@@ -783,6 +795,10 @@ Apply ONLY the requested change. Preserve all other geometry, parameters, and st
 ## Current Parameters
 {existing_parameters_json}
 
+## Current Design Mode
+design_mode: {design_mode}
+components: {components_json}
+
 ## Modification Rules
 1. Apply ONLY the requested change — keep everything else identical.
 2. Keep the PARAMS dict at the top. Add/update/remove keys as needed.
@@ -790,16 +806,19 @@ Apply ONLY the requested change. Preserve all other geometry, parameters, and st
 4. New dimensions must be added to PARAMS with realistic min/max/step.
 5. Parameters no longer used must be removed from both PARAMS and the parameters array.
 6. Ensure parameter sanity assertions still pass after your changes.
-7. Ensure all components remain physically connected (no disconnected islands).
-8. Keep the geometry validation block before export.
-9. OUTPUT_STL and OUTPUT_STEP are runtime-injected — do NOT redefine them.
-10. Do NOT add markdown fences. Return ONLY valid JSON.
+7. Preserve `design_mode` unless the modification explicitly changes a single solid into an assembly or an assembly into a single solid.
+8. For `single_solid`, ensure all components remain physically connected (no disconnected islands). For `assembly`, keep distinct components valid and do not assert exactly one solid.
+9. Keep the geometry validation block before export.
+10. OUTPUT_STL and OUTPUT_STEP are runtime-injected — do NOT redefine them.
+11. Do NOT add markdown fences. Return ONLY valid JSON.
 
 ## Required Output Schema
 {{
   "python_code": "<updated complete build123d script>",
   "parameters": [<updated parameter objects>],
   "part_name": "<same or updated name>",
-  "description": "<updated one-sentence description>"
+  "description": "<updated one-sentence description>",
+  "design_mode": "<single_solid or assembly>",
+  "components": "<null for single_solid, list of component variable names for assembly>"
 }}
 """

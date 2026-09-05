@@ -42,13 +42,22 @@ _embed_model = None   # lazy-loaded on first use
 
 
 def _get_embed_model():
-    """Lazy-loads the sentence-transformers model (cached after first call)."""
+    """Lazy-loads the sentence-transformers model (cached after first call).
+    Returns None if the model cannot be loaded (offline / missing package).
+    """
     global _embed_model
     if _embed_model is None:
-        from sentence_transformers import SentenceTransformer
-        logger.info(f"[RAG] Loading embedding model '{_EMBED_MODEL_NAME}'...")
-        _embed_model = SentenceTransformer(_EMBED_MODEL_NAME)
-        logger.info("[RAG] Embedding model ready.")
+        try:
+            from sentence_transformers import SentenceTransformer
+            logger.info(f"[RAG] Loading embedding model '{_EMBED_MODEL_NAME}'...")
+            _embed_model = SentenceTransformer(_EMBED_MODEL_NAME)
+            logger.info("[RAG] Embedding model ready.")
+        except Exception as e:
+            logger.warning(
+                f"[RAG] Could not load embedding model '{_EMBED_MODEL_NAME}': {e}. "
+                "RAG retrieval will be disabled for this session."
+            )
+            _embed_model = None
     return _embed_model
 
 
@@ -59,16 +68,19 @@ def _get_embed_model():
 def _embed_texts(texts: List[str]) -> List[List[float]]:
     """
     Embed a batch of strings locally via sentence-transformers.
-    Returns list of 384-dim float vectors.
+    Returns list of 384-dim float vectors, or empty list if model unavailable.
     """
     model = _get_embed_model()
+    if model is None:
+        return []
     embeddings = model.encode(texts, show_progress_bar=False, convert_to_numpy=True)
     return embeddings.tolist()
 
 
 def _embed_query(query: str) -> List[float]:
-    """Embed a single query string for retrieval."""
-    return _embed_texts([query])[0]
+    """Embed a single query string for retrieval. Returns [] if model unavailable."""
+    results = _embed_texts([query])
+    return results[0] if results else []
 
 
 # ---------------------------------------------------------------------------
@@ -105,12 +117,12 @@ class RAGService:
         Skips examples already indexed (by ID) unless force_rebuild=True.
         Returns: number of new documents added.
         """
-        # Load all corpus modules — add new week modules here as they are created
         from rag_corpus.examples_week4 import EXAMPLES as W4
         from rag_corpus.examples_week5 import EXAMPLES as W5
         from rag_corpus.examples_week8 import EXAMPLES as W8
         from rag_corpus.examples_engineering import EXAMPLES as W_ENG
-        ALL_EXAMPLES = W4 + W5 + W8 + W_ENG
+        from rag_corpus.examples_complex import EXAMPLES as W_CMPLX
+        ALL_EXAMPLES = W4 + W5 + W8 + W_ENG + W_CMPLX
 
         collection = _get_collection()
 

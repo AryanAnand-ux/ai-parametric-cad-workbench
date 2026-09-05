@@ -40,8 +40,11 @@ load_dotenv()
 
 gemini_key = os.getenv("GEMINI_API_KEY", "")
 groq_key   = os.getenv("GROQ_API_KEY", "")
+web_cookie = os.getenv("GEMINI_WEB_COOKIE", "")
+web_enabled = os.getenv("GEMINI_WEB_ENABLED", "true").lower() in ("true", "1", "yes")
 
-print(f"  [{'OK' if gemini_key else 'WARN'}]   GEMINI_API_KEY {'configured' if gemini_key else 'NOT SET (Gemini tiers will fail)'}")
+print(f"  [{'OK' if gemini_key else 'WARN'}]   GEMINI_API_KEY {'configured' if gemini_key else 'NOT SET (Gemini API tiers will fail)'}")
+print(f"  [{'OK' if web_enabled else 'WARN'}]   GEMINI_WEB     {'enabled (' + ('cookie-authenticated' if web_cookie else 'anonymous zero-auth') + ')' if web_enabled else 'disabled'}")
 print(f"  [{'OK' if groq_key else 'WARN'}]   GROQ_API_KEY   {'configured' if groq_key else 'NOT SET (Groq fallback unavailable)'}")
 
 print("=" * 60)

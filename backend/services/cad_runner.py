@@ -32,7 +32,13 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
-from config import TEMP_DIR, MODELS_DIR, PYTHON_EXEC
+from config import (
+    TEMP_DIR,
+    MODELS_DIR,
+    PYTHON_EXEC,
+    CAD_MAX_CONCURRENT_EXECUTIONS,
+    CAD_EXECUTION_TIMEOUT_SECONDS,
+)
 from services.cleanup import ArtifactCleanupManager
 
 logger = logging.getLogger("cad_workbench.cad_runner")
@@ -111,10 +117,20 @@ BLOCKED_BUILTINS = {
     "breakpoint", "memoryview"
 }
 
+BLOCKED_RUNTIME_NAMES = {"sys", "_sys_runtime", "_os_dll", "_ocp_libs"}
+
 BLOCKED_ATTRIBUTES = {
     "__subclasses__", "__bases__", "__globals__",
     "__code__", "__reduce__", "__reduce_ex__", "__mro__"
 }
+
+SAFE_SCRIPT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
+CAD_EXECUTION_SEMAPHORE = asyncio.Semaphore(max(1, CAD_MAX_CONCURRENT_EXECUTIONS))
+
+
+def is_safe_script_id(script_id: str) -> bool:
+    """Return whether an artifact identifier is safe to use as a filename stem."""
+    return bool(isinstance(script_id, str) and SAFE_SCRIPT_ID_PATTERN.fullmatch(script_id))
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +184,8 @@ def validate_script_safety(python_code: str) -> tuple[bool, str]:
         elif isinstance(node, ast.Name):
             if node.id in {"__builtins__", "__import__"}:
                 return False, f"Blocked direct reference: '{node.id}'"
+            if node.id in BLOCKED_RUNTIME_NAMES:
+                return False, f"Blocked runtime reference: '{node.id}'"
 
     return True, "OK"
 
@@ -232,7 +250,7 @@ def inject_parameters(python_code: str, parameters: Dict[str, Any]) -> str:
 # Subprocess Wrapper Builder
 # ---------------------------------------------------------------------------
 
-def _build_wrapper(python_code: str, stl_posix: str, step_posix: str) -> str:
+def _build_wrapper(python_code: str, stl_posix: str, step_posix: str, fast_preview: bool = False) -> str:
     """
     Wraps the user script with OUTPUT_STL / OUTPUT_STEP injection
     and a try/except that sends tracebacks to stderr.
@@ -244,6 +262,18 @@ def _build_wrapper(python_code: str, stl_posix: str, step_posix: str) -> str:
     """
     import site
     import os as _os
+
+    fast_patch = ""
+    if fast_preview:
+        fast_patch = '''\
+# ── Fast Preview Optimization (Optimized tolerances for fast recomputation) ─
+import build123d as _b3d_opt
+_real_export_stl = _b3d_opt.export_stl
+def _fast_export_stl(to_export, file_path, tolerance=0.01, angular_tolerance=0.25, ascii_format=False):
+    return _real_export_stl(to_export, file_path, tolerance=tolerance, angular_tolerance=angular_tolerance, ascii_format=ascii_format)
+_b3d_opt.export_stl = _fast_export_stl
+# ────────────────────────────────────────────────────────────────────────────
+'''
 
     # Find the cadquery OCP libs folder relative to current site-packages
     ocp_libs_dir = ""
@@ -268,8 +298,9 @@ if hasattr(_os_dll, "add_dll_directory") and _os_dll.path.isdir(_ocp_libs):
         "    " + line if line.strip() else line
         for line in python_code.splitlines()
     )
-    return f'''import sys
+    return f'''import sys as _sys_runtime
 {dll_injection}
+{fast_patch}
 # Runtime-injected export paths (do NOT redefine these in generated scripts)
 OUTPUT_STL  = r"{stl_posix}"
 OUTPUT_STEP = r"{step_posix}"
@@ -278,8 +309,8 @@ try:
 {indented}
 except Exception:
     import traceback
-    sys.stderr.write(traceback.format_exc())
-    sys.exit(1)
+    _sys_runtime.stderr.write(traceback.format_exc())
+    _sys_runtime.exit(1)
 '''
 
 
@@ -303,13 +334,40 @@ class CADRunner:
         script_id: str,
         python_code: str,
         parameters: Optional[Dict[str, Any]] = None,
-        timeout_seconds: int = 30      # build123d needs more time than trimesh
+        design_mode: str = "single_solid",
+        component_names: Optional[List[str]] = None,
+        timeout_seconds: int = CAD_EXECUTION_TIMEOUT_SECONDS,
+        fast_preview: bool = False
     ) -> Dict[str, Any]:
         """
         Runs a build123d script in an isolated subprocess.
         Returns execution result dict with mesh_url, step_url, mesh_info.
         """
         start = time.time()
+
+        if not is_safe_script_id(script_id):
+            return {
+                "status": "error",
+                "error_type": ErrorType.SECURITY,
+                "script_id": script_id,
+                "recomputation_time_ms": 0,
+                "stderr": "Invalid script_id: only letters, numbers, '_' and '-' are allowed.",
+                "mesh_url": None,
+                "step_url": None,
+                "mesh_info": {},
+            }
+
+        if design_mode not in {"single_solid", "assembly"}:
+            return {
+                "status": "error",
+                "error_type": ErrorType.RUNTIME,
+                "script_id": script_id,
+                "recomputation_time_ms": 0,
+                "stderr": f"Invalid design_mode: {design_mode!r}",
+                "mesh_url": None,
+                "step_url": None,
+                "mesh_info": {},
+            }
 
         if parameters:
             python_code = inject_parameters(python_code, parameters)
@@ -340,7 +398,8 @@ class CADRunner:
         wrapper = _build_wrapper(
             python_code,
             stl_path.as_posix(),
-            step_path.as_posix()
+            step_path.as_posix(),
+            fast_preview=fast_preview
         )
 
         temp_script = TEMP_DIR / f"{script_id}_exec.py"
@@ -363,7 +422,27 @@ class CADRunner:
         # Windows with Python 3.12+ SelectorEventLoop (used by uvicorn).
         # asyncio.to_thread + subprocess.run works on all platforms/versions.
         def _run_script() -> tuple[int, str, str]:
-            """Blocking subprocess call — runs in a thread pool."""
+            """Blocking subprocess call — runs in a thread pool with a stripped env."""
+            # Build a minimal env: only basic OS/runtime vars, no API keys or tokens
+            _os_env = os.environ
+            isolated_env = {
+                k: _os_env[k]
+                for k in (
+                    "SYSTEMROOT", "SYSTEMDRIVE", "PATH", "PATHEXT",
+                    "TEMP", "TMP", "USERNAME", "USERPROFILE",
+                    "APPDATA", "LOCALAPPDATA", "COMSPEC",
+                    # Python runtime
+                    "PYTHONPATH", "PYTHONHOME",
+                    # OCC / build123d shared libraries
+                    "OCC_LIBRARY_PATH",
+                )
+                if k in _os_env
+            }
+            # Explicitly block user-site packages to reduce attack surface
+            isolated_env["PYTHONNOUSERSITE"] = "1"
+            # Ensure PYTHONPATH is empty so installed packages outside venv can't be reached
+            isolated_env["PYTHONPATH"] = ""
+
             result = subprocess.run(
                 [PYTHON_EXEC, str(temp_script)],
                 capture_output=True,
@@ -371,15 +450,14 @@ class CADRunner:
                 encoding="utf-8",
                 errors="replace",
                 timeout=timeout_seconds,
+                env=isolated_env,
             )
             return result.returncode, result.stdout, result.stderr
 
         try:
             try:
-                returncode, stdout, stderr = await asyncio.wait_for(
-                    asyncio.to_thread(_run_script),
-                    timeout=timeout_seconds + 5,  # outer asyncio guard
-                )
+                async with CAD_EXECUTION_SEMAPHORE:
+                    returncode, stdout, stderr = await asyncio.to_thread(_run_script)
             except asyncio.TimeoutError:
                 return {
                     "status": "error",
@@ -403,6 +481,7 @@ class CADRunner:
 
             elapsed = int((time.time() - start) * 1000)
             success = (returncode == 0) and stl_path.exists()
+            missing_step_export = success and not step_path.exists()
 
             # Classify error AFTER full stdout/stderr capture — no race condition.
             # Cleanup of temp_script happens in the `finally` block below,
@@ -463,12 +542,45 @@ class CADRunner:
                     except Exception:
                         body_count = 1  # can't determine — assume OK
 
-                    if body_count > 1:
+                    component_count = len(component_names or [])
+                    if design_mode == "single_solid" and body_count > 1:
                         geometry_warnings.append(
                             f"Mesh has {body_count} disconnected bodies (floating islands). "
                             "All structural components must be physically fused. "
                             "Use fuse() or ensure sketch regions overlap the main body."
                         )
+                    elif design_mode == "assembly" and component_count and body_count < component_count:
+                        geometry_warnings.append(
+                            f"Assembly declares {component_count} components but mesh inspection found "
+                            f"{body_count} bodies. Ensure each component is exported as distinct solid geometry."
+                        )
+
+                    component_validity = []
+                    if design_mode == "assembly":
+                        try:
+                            split_meshes = mesh.split(only_watertight=False)
+                            for index, component_mesh in enumerate(split_meshes, start=1):
+                                component_validity.append({
+                                    "index": index,
+                                    "is_watertight": bool(getattr(component_mesh, "is_watertight", False)),
+                                    "volume_mm3": round(float(getattr(component_mesh, "volume", 0.0)), 2),
+                                })
+                        except Exception as split_error:
+                            geometry_warnings.append(f"Could not validate assembly components separately: {split_error}")
+
+                    if design_mode == "assembly":
+                        bodies_are_valid = body_count >= 1
+                        if component_validity:
+                            bodies_are_valid = all(
+                                item["is_watertight"] and item["volume_mm3"] > 0
+                                for item in component_validity
+                            )
+                            if not bodies_are_valid:
+                                geometry_warnings.append(
+                                    "One or more assembly components is non-watertight or has non-positive volume."
+                                )
+                    else:
+                        bodies_are_valid = body_count == 1
 
                     # --- Dimension sanity (Rule 7) ---
                     min_extent = min(float(e) for e in ext)
@@ -479,9 +591,13 @@ class CADRunner:
                         )
 
                     mesh_info = {
-                        "is_valid": is_watertight and volume > 0 and body_count == 1,
+                        "is_valid": is_watertight and volume > 0 and bodies_are_valid,
+                        "validation_mode": design_mode,
                         "is_watertight": is_watertight,
                         "body_count": body_count,
+                        "component_count": component_count,
+                        "component_names": component_names or [],
+                        "component_validity": component_validity,
                         "volume_mm3": round(volume, 2),
                         "surface_area_mm2": round(float(getattr(mesh, "area", 0.0)), 2),
                         "dimensions_mm": {
@@ -505,8 +621,14 @@ class CADRunner:
                 except Exception as me:
                     stderr += f"\nMesh inspection warning: {me}"
 
+            if missing_step_export:
+                stderr += "\nSTEP export was not produced by the CAD script."
+                error_type = ErrorType.IO_ERROR
+
+            execution_status = "success" if success and step_path.exists() and mesh_info else "error"
+
             return {
-                "status": "success" if success else "error",
+                "status": execution_status,
                 # error_type is set AFTER stdout/stderr are fully captured above.
                 # The `finally` block that deletes temp_script runs AFTER this
                 # return — so there is no race between error classification and
@@ -528,4 +650,3 @@ class CADRunner:
             # Cleanup is intentionally sequenced AFTER stdout/stderr capture and
             # error classification above — there is no race condition on Windows.
             ArtifactCleanupManager.remove_file_safely(temp_script)
-

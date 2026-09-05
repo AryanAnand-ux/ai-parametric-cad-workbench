@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    environment:
+      HOST: 0.0.0.0
+      RELOAD: "false"
+      ENVIRONMENT: production
+      ALLOWED_ORIGINS: http://localhost:5173,http://localhost
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?Set ADMIN_TOKEN before starting production services}
+      RAG_BUILD_ON_STARTUP: "false"
+    volumes:
+      - cad-artifacts:/app/scratch/temp
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  cad-artifacts:

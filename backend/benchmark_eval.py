@@ -16,9 +16,9 @@ import sys
 from datetime import datetime
 
 try:
-    import requests
+    import httpx
 except ImportError:
-    print("[ERROR] requests not installed. Run: pip install requests")
+    print("[ERROR] httpx not installed. Run: pip install httpx")
     sys.exit(1)
 
 BENCHMARK_PROMPTS = [
@@ -66,7 +66,7 @@ def run_benchmark(base_url, timeout):
         }
 
         try:
-            resp = requests.post(f"{base_url}/api/generate", json={"prompt": prompt}, timeout=timeout)
+            resp = httpx.post(f"{base_url}/api/generate", json={"prompt": prompt}, timeout=timeout)
             elapsed_ms = int((time.time() - start) * 1000)
             result["latency_ms"] = elapsed_ms
 
@@ -86,7 +86,7 @@ def run_benchmark(base_url, timeout):
                 result["error"] = str(detail)[:120]
                 print(f" [FAIL] HTTP {resp.status_code}: {result['error'][:40]}")
 
-        except requests.exceptions.Timeout:
+        except httpx.TimeoutException:
             result["latency_ms"] = int((time.time() - start) * 1000)
             result["error"] = f"Timeout after {timeout}s"
             print(f" [TIMEOUT] ({timeout}s)")
@@ -156,7 +156,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        health = requests.get(f"{args.url}/api/health", timeout=10)
+        health = httpx.get(f"{args.url}/api/health", timeout=10)
         if health.status_code != 200:
             print(f"[ERROR] Backend returned HTTP {health.status_code}")
             sys.exit(1)

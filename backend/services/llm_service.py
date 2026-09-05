@@ -20,10 +20,11 @@ from typing import Tuple, Optional
 
 from pydantic import ValidationError
 
-from config import GEMINI_API_KEY, GROQ_API_KEY
+from config import GEMINI_API_KEY, GROQ_API_KEY, GEMINI_WEB_MODEL
 from schemas import DualOutputPayload
 from services.prompts import BUILD123D_SYSTEM_PROMPT, CORRECTION_PROMPT_TEMPLATE, MODIFY_PROMPT_TEMPLATE
 from services.rag_service import RAGService
+from services import gemini_web_client
 
 logger = logging.getLogger("cad_workbench.llm_service")
 
@@ -69,6 +70,42 @@ def _robust_parse_json(text: str) -> dict:
         extracted["description"] = m_desc.group(1).strip()
     else:
         extracted["description"] = "Parametric 3D CAD model"
+
+    m_mode = re.search(r'"design_mode"\s*:\s*"(single_solid|assembly)"', text)
+    if m_mode:
+        extracted["design_mode"] = m_mode.group(1)
+
+    m_components_start = re.search(r'"components"\s*:\s*\[', text)
+    if m_components_start:
+        start_bracket = m_components_start.end() - 1
+        depth = 0
+        end_bracket = -1
+        in_str = False
+        escape = False
+        for i in range(start_bracket, len(text)):
+            ch = text[i]
+            if escape:
+                escape = False
+                continue
+            if ch == '\\':
+                escape = True
+                continue
+            if ch == '"':
+                in_str = not in_str
+                continue
+            if not in_str:
+                if ch == '[':
+                    depth += 1
+                elif ch == ']':
+                    depth -= 1
+                    if depth == 0:
+                        end_bracket = i + 1
+                        break
+        if end_bracket != -1:
+            try:
+                extracted["components"] = json.loads(text[start_bracket:end_bracket], strict=False)
+            except Exception:
+                pass
 
     # Extract parameters array using bracket-depth counting
     m_params_start = re.search(r'"parameters"\s*:\s*\[', text)
@@ -256,6 +293,18 @@ def _call_groq(prompt: str, system: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Gemini Web Client (Reverse-Engineered Zero-Auth/Cookie Web Tier)
+# ---------------------------------------------------------------------------
+
+def _call_gemini_web(prompt: str, system: str, model: str = None) -> str:
+    """
+    Calls Gemini Web via the reverse-engineered StreamGenerate protocol.
+    Works either zero-auth (anonymous) or with session cookies from .env.
+    """
+    return gemini_web_client.generate(prompt=prompt, system_instruction=system, model=model)
+
+
+# ---------------------------------------------------------------------------
 # Main LLM Service Class
 # ---------------------------------------------------------------------------
 
@@ -298,18 +347,35 @@ class LLMService:
             "gemini-2.5-flash",
         ]
 
-        for m in gemini_models:
-            try:
-                logger.info(f"[LLM] Calling Gemini ({m})...")
-                raw = _call_gemini(prompt, system, model=m)
-                logger.info(f"[LLM] Gemini ({m}) responded ({len(raw)} chars)")
-                payload = _parse_response(raw)
-                return payload, m
-            except Exception as e:
-                errors.append(f"{m}: {e}")
-                logger.warning(f"[LLM] Model {m} failed or invalid JSON: {e}")
+        # Tier 1: Official Gemini API (if key configured)
+        if GEMINI_API_KEY:
+            for m in gemini_models:
+                try:
+                    logger.info(f"[LLM] Calling Gemini API ({m})...")
+                    raw = _call_gemini(prompt, system, model=m)
+                    logger.info(f"[LLM] Gemini API ({m}) responded ({len(raw)} chars)")
+                    payload = _parse_response(raw)
+                    return payload, m
+                except Exception as e:
+                    errors.append(f"{m}: {e}")
+                    logger.warning(f"[LLM] Model {m} failed or invalid JSON: {e}")
+        else:
+            logger.info("[LLM] GEMINI_API_KEY not configured, skipping official Gemini API tier.")
 
-        # Fallback to Groq if key exists
+        # Tier 2: Gemini Web Client (free web fallback via StreamGenerate protocol)
+        if gemini_web_client.is_configured():
+            try:
+                web_model = GEMINI_WEB_MODEL or "gemini-2.5-flash"
+                logger.info(f"[LLM] Calling Gemini Web ({web_model})...")
+                raw = _call_gemini_web(prompt, system, model=web_model)
+                logger.info(f"[LLM] Gemini Web ({web_model}) responded ({len(raw)} chars)")
+                payload = _parse_response(raw)
+                return payload, f"gemini-web-{web_model}"
+            except Exception as e:
+                errors.append(f"gemini-web: {e}")
+                logger.warning(f"[LLM] Gemini Web tier failed: {e}")
+
+        # Tier 3: Groq Llama-3.3-70B fallback if key exists
         if GROQ_API_KEY:
             try:
                 logger.info("[LLM] Calling Groq Llama-3.3-70B...")
@@ -380,6 +446,8 @@ class LLMService:
         modification_prompt: str,
         part_name: str,
         existing_parameters: list,
+        design_mode: str = "single_solid",
+        components: Optional[list] = None,
     ) -> Tuple[DualOutputPayload, str]:
         """
         Modifies an existing build123d script based on a user's natural language change request.
@@ -396,6 +464,8 @@ class LLMService:
             modification_prompt=modification_prompt,
             python_code=python_code,
             existing_parameters_json=existing_params_json,
+            design_mode=design_mode,
+            components_json=json.dumps(components or None),
         )
 
         # Use the existing script's RAG context for system prompt
@@ -416,6 +486,8 @@ class LLMService:
         part_name: str,
         parameters: list = None,
         existing_parameters: list = None,
+        design_mode: str = "single_solid",
+        components: Optional[list] = None,
     ) -> Tuple[DualOutputPayload, str]:
         """Alias for modify_code supporting both parameter argument names."""
         params = parameters if parameters is not None else (existing_parameters or [])
@@ -424,6 +496,8 @@ class LLMService:
             modification_prompt=modification_prompt,
             part_name=part_name,
             existing_parameters=params,
+            design_mode=design_mode,
+            components=components,
         )
 
     # Expose parser for tests

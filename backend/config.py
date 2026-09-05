@@ -33,3 +33,28 @@ HOST = os.getenv("HOST", "0.0.0.0")
 # LLM API Keys (centralized)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+
+# Gemini Web (Reverse-Engineered Web2API Integration)
+# Allows zero-auth or cookie-authenticated generation directly via Gemini Web
+GEMINI_WEB_ENABLED = os.getenv("GEMINI_WEB_ENABLED", "false").strip().lower() in ("true", "1", "yes")
+GEMINI_WEB_COOKIE = os.getenv("GEMINI_WEB_COOKIE", "")
+GEMINI_WEB_COOKIE_FILE = os.getenv("GEMINI_WEB_COOKIE_FILE", str(BASE_DIR / ".gemini_cookie"))
+GEMINI_WEB_MODEL = os.getenv("GEMINI_WEB_MODEL", "gemini-2.5-flash")
+
+# Standalone Gemini-Web2API Proxy Service Settings
+GEMINI_WEB2API_HOST = os.getenv("GEMINI_WEB2API_HOST", "127.0.0.1")  # Strictly loopback for security
+GEMINI_WEB2API_PORT = int(os.getenv("GEMINI_WEB2API_PORT", "8081"))
+GEMINI_WEB2API_KEY = os.getenv("GEMINI_WEB2API_KEY", "")  # Optional Bearer token for localhost auth
+
+# API boundary settings
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip()
+ALLOWED_ORIGINS = [
+	origin.strip()
+	for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+	if origin.strip()
+]
+RELOAD = os.getenv("RELOAD", "false").strip().lower() in ("true", "1", "yes")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
+CAD_MAX_CONCURRENT_EXECUTIONS = int(os.getenv("CAD_MAX_CONCURRENT_EXECUTIONS", "2"))
+CAD_EXECUTION_TIMEOUT_SECONDS = int(os.getenv("CAD_EXECUTION_TIMEOUT_SECONDS", "60"))
+RAG_BUILD_ON_STARTUP = os.getenv("RAG_BUILD_ON_STARTUP", "false").strip().lower() in ("true", "1", "yes")

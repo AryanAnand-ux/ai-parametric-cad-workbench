@@ -62,6 +62,7 @@ export default function ParameterSlider({ param, value, onChange }) {
         <div className="param-controls-group">
           <div className="param-value-box">
             <input
+              aria-label={`${param.label || param.name} value`}
               type="number"
               className="param-number-input"
               value={displayVal}
@@ -77,8 +78,13 @@ export default function ParameterSlider({ param, value, onChange }) {
               onClick={handleReset}
               className="param-reset-btn"
               title={`Reset to default (${param.default}${unit})`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
             >
-              ↺ Reset
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 10h10a5 5 0 0 1 5 5v2"/>
+                <polyline points="7 6 3 10 7 14"/>
+              </svg>
+              <span>Reset</span>
             </button>
           )}
         </div>
@@ -96,6 +102,7 @@ export default function ParameterSlider({ param, value, onChange }) {
 
         <div className="param-slider-container">
           <input
+            aria-label={param.label || param.name}
             id={`slider-${param.name}`}
             className="param-slider"
             type="range"
@@ -105,7 +112,7 @@ export default function ParameterSlider({ param, value, onChange }) {
             value={numValue}
             onChange={handleChange}
             style={{
-              background: `linear-gradient(to right, #2563EB ${pct}%, #E2E8F0 ${pct}%)`
+              background: `linear-gradient(to right, #474040 ${pct}%, #E8E5DD ${pct}%)`
             }}
           />
         </div>

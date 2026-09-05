@@ -7,7 +7,15 @@ Verifies that:
   - Dunder introspection (__subclasses__, __globals__) is rejected
 """
 import pytest
-from services.cad_runner import validate_script_safety
+from services.cad_runner import is_safe_script_id, validate_script_safety
+
+
+def test_script_id_rejects_path_traversal():
+    assert is_safe_script_id("part_1234abcd") is True
+    assert is_safe_script_id("part_1234abcd_v1") is True
+    assert is_safe_script_id("../outside") is False
+    assert is_safe_script_id("part/../../outside") is False
+    assert is_safe_script_id("part.name") is False
 
 def test_ast_sandbox_safe_script():
     safe_code = """
@@ -73,3 +81,12 @@ g = hack.__globals__
     is_safe, msg = validate_script_safety(code)
     assert is_safe is False
     assert "Blocked sensitive attribute access: '__globals__'" in msg
+
+
+def test_ast_sandbox_blocks_indirect_builtins_access():
+    code = '''
+sys.modules["builtins"].__dict__["__import__"]("os")
+'''
+    is_safe, msg = validate_script_safety(code)
+    assert is_safe is False
+    assert "Blocked" in msg

@@ -105,6 +105,8 @@ async def test_4_box_execution():
         script_id="test_w4_box",
         python_code=SIMPLE_BOX_SCRIPT
     )
+    assert result["status"] == "success", result.get("stderr", "")
+    assert result["mesh_info"]["is_valid"] is True
     if result["status"] == "success":
         print(f"[OK] Box executed in {result['recomputation_time_ms']} ms")
         print(f"     STL: {result['mesh_url']}")
@@ -121,6 +123,8 @@ async def test_5_hollow_cylinder():
         script_id="test_w4_hollow",
         python_code=HOLLOW_CYL_SCRIPT
     )
+    assert result["status"] == "success", result.get("stderr", "")
+    assert result["mesh_info"]["is_valid"] is True
     if result["status"] == "success":
         print(f"[OK] Hollow cylinder in {result['recomputation_time_ms']} ms")
         print(f"     Mesh dims: {result.get('mesh_info', {}).get('dimensions_mm')}")

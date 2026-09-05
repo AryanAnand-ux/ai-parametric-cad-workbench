@@ -17,7 +17,9 @@ A Technical Neobrutalist WebGL user interface for natural language 3D CAD modeli
 
 | Component | Path | Description |
 |---|---|---|
-| `App.jsx` | `src/App.jsx` | Bento Grid shell, prompt inputs, Chat-to-Modify panel, and state management |
+| `Router.jsx` | `src/Router.jsx` | Client-side hash router with `React.lazy()` code splitting and Suspense fallback |
+| `LandingPage.jsx` | `src/LandingPage.jsx` | Editorial engineering landing page with AutoCAD 2025 showcase, live slider node, and FAQ |
+| `App.jsx` | `src/App.jsx` | CAD Workbench studio shell, prompt inputs, Chat-to-Modify panel, and state management |
 | `Viewer3D.jsx` | `src/components/Viewer3D.jsx` | R3F 3D Canvas, STLLoader, OrbitControls, 4 PBR materials, 3D Bounding Box Annotations |
 | `ParameterSlider.jsx` | `src/components/ParameterSlider.jsx` | Parametric dimension sliders with unit detection, `+`/`-` steppers, and reset buttons |
 | `api.js` | `src/api.js` | Axios API client targeting `/api/generate`, `/api/modify`, `/api/recompute`, and `/api/health` |
@@ -36,4 +38,8 @@ npm run dev
 # Build production bundle
 npm run build
 ```
+
+## Production
+
+The root `docker-compose.yml` builds this frontend with Nginx. Nginx proxies `/api/` and `/static/` to the backend service and serves the Vite single-page application with history fallback.
 

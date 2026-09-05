@@ -832,5 +832,57 @@ assert len(part.part.solids()) == 1
 export_stl(part.part, OUTPUT_STL)
 export_step(part.part, OUTPUT_STEP)
 """
+    },
+    {
+        "id": "model_rocket_simple",
+        "description": "Parametric model rocket with a cylindrical fuselage, conical nose, four intersecting stabilizer fins, and a centered nozzle recess",
+        "tags": ["rocket", "model rocket", "aerospace", "fuselage", "nose cone", "fins", "aerodynamic"],
+        "code": """\
+PARAMS = {
+    "body_radius": 14.0,
+    "body_length": 100.0,
+    "nose_height": 32.0,
+    "fin_chord": 30.0,
+    "fin_height": 24.0,
+    "fin_thickness": 4.0,
+    "nozzle_radius": 5.0,
+    "nozzle_depth": 4.0
+}
+from build123d import *
+
+R = PARAMS["body_radius"]
+L = PARAMS["body_length"]
+NH = PARAMS["nose_height"]
+FC = PARAMS["fin_chord"]
+FH = PARAMS["fin_height"]
+FT = PARAMS["fin_thickness"]
+
+assert R > 0 and L > 0 and NH > 0
+assert 0 < FT < R and 0 < FH < L and FC > FT
+
+with BuildPart() as part:
+    with Locations((0, 0, L / 2.0)):
+        Cylinder(radius=R, height=L)
+    with Locations((0, 0, L + NH / 2.0)):
+        Cone(bottom_radius=R, top_radius=1.5, height=NH)
+
+    # Each fin overlaps the fuselage by 2 mm so the result remains one solid.
+    with Locations((R + FC / 2.0 - 2.0, 0, FH / 2.0)):
+        Box(FC, FT, FH)
+    with Locations((-(R + FC / 2.0 - 2.0), 0, FH / 2.0)):
+        Box(FC, FT, FH)
+    with Locations((0, R + FC / 2.0 - 2.0, FH / 2.0)):
+        Box(FT, FC, FH)
+    with Locations((0, -(R + FC / 2.0 - 2.0), FH / 2.0)):
+        Box(FT, FC, FH)
+
+    with Locations((0, 0, -PARAMS["nozzle_depth"] / 2.0)):
+        Cylinder(radius=PARAMS["nozzle_radius"], height=PARAMS["nozzle_depth"], mode=Mode.SUBTRACT)
+
+assert part.part is not None
+assert len(part.part.solids()) == 1
+export_stl(part.part, OUTPUT_STL)
+export_step(part.part, OUTPUT_STEP)
+"""
     }
 ]

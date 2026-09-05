@@ -2,9 +2,11 @@
 Unit tests for Chat-to-Modify request/response schemas and LLMService modification contracts.
 """
 import pytest
+import asyncio
 from unittest.mock import patch
 from schemas import CADParameter, DualOutputPayload, ModifyRequest, ModifyResponse
 from services.llm_service import LLMService
+from main import allocate_modify_script_id
 
 
 def test_modify_request_validation():
@@ -87,4 +89,19 @@ def test_llm_service_modify_script_contract():
         param_names = {p.name for p in payload.parameters}
         assert "length" in param_names
         assert "width" in param_names
+
+
+def test_concurrent_modify_ids_are_unique(tmp_path):
+    reserved = set()
+    lock = asyncio.Lock()
+
+    async def allocate():
+        return await allocate_modify_script_id("part_test", tmp_path, reserved, lock)
+
+    async def run_pair():
+        return await asyncio.gather(allocate(), allocate())
+
+    ids = asyncio.run(run_pair())
+    assert len(set(ids)) == 2
+    assert all(value.startswith("part_test_v") for value in ids)
 

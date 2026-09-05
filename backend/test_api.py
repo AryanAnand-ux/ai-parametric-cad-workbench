@@ -11,9 +11,39 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from main import app
+from main import app, require_admin_token, require_artifact_access
+from fastapi import HTTPException
 
-HAVE_API_KEY = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GROQ_API_KEY"))
+RUN_LIVE_LLM_TESTS = os.getenv("RUN_LIVE_LLM_TESTS", "false").lower() in {"1", "true", "yes"}
+HAVE_API_KEY = RUN_LIVE_LLM_TESTS and bool(os.getenv("GEMINI_API_KEY") or os.getenv("GROQ_API_KEY"))
+
+
+def test_admin_token_protection(monkeypatch):
+    monkeypatch.setattr("main.ADMIN_TOKEN", "test-admin-token")
+    with pytest.raises(HTTPException) as raised:
+        require_admin_token(None)
+    assert raised.value.status_code == 401
+    require_admin_token("test-admin-token")
+
+
+def test_admin_routes_remain_open_without_configured_token(monkeypatch):
+    monkeypatch.setattr("main.ADMIN_TOKEN", "")
+    require_admin_token(None)
+
+
+def test_admin_token_is_required_in_production(monkeypatch):
+    monkeypatch.setattr("main.ADMIN_TOKEN", "")
+    monkeypatch.setattr("main.ENVIRONMENT", "production")
+    with pytest.raises(HTTPException) as raised:
+        require_admin_token(None)
+    assert raised.value.status_code == 503
+
+
+def test_python_artifacts_require_admin_access(monkeypatch):
+    monkeypatch.setattr("main.ADMIN_TOKEN", "test-admin-token")
+    with pytest.raises(HTTPException) as raised:
+        require_artifact_access("part_example.py", None)
+    assert raised.value.status_code == 401
 
 SAMPLE_CODE = """PARAMS = {
     "bracket_length": 35.0,

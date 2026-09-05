@@ -10,9 +10,18 @@ env/
 # Environment Variables (NEVER commit these)
 .env
 .env.local
+backend/.env
+backend/.env.local
+backend/.env.*.local
 frontend/.env
 frontend/.env.local
 frontend/.env*.local
+*.cookie
+*.cookie.txt
+*cookie*.json
+.gemini_cookie
+cookie.txt
+cookies.txt
 
 # Temporary Files & Generated CAD Artifacts
 backend/temp/
@@ -29,6 +38,7 @@ logs/
 # Pytest cache
 .pytest_cache/
 .cache/
+.agent/
 
 # IDE & Editor Files
 .vscode/
@@ -51,3 +61,4 @@ backend/static/
 
 # Scratch / Temp Directories
 scratch/
+benchmark_results.json
