@@ -30,6 +30,13 @@ from config import (
     GEMINI_WEB_COOKIE,
     GEMINI_WEB_COOKIE_FILE,
     GEMINI_WEB_MODEL,
+    GEMINI_WEB_BL,
+    GEMINI_WEB_AUTH_USER,
+    GEMINI_WEB_XSRF_TOKEN,
+    GEMINI_WEB_PROXY,
+    GEMINI_WEB_RETRY_ATTEMPTS,
+    GEMINI_WEB_RETRY_DELAY_SEC,
+    GEMINI_WEB_TIMEOUT_SEC,
 )
 
 logger = logging.getLogger("cad_workbench.gemini_web")
@@ -42,14 +49,22 @@ MODELS_CONFIG: Dict[str, Dict[str, Any]] = {
     "gemini-3.7-flash": {"mode": 1, "think": 4, "desc": "Gemini 3.7 Flash"},
     "gemini-3.6-flash": {"mode": 1, "think": 4, "desc": "Gemini 3.6 Flash"},
     "gemini-3.5-flash": {"mode": 1, "think": 4, "desc": "Gemini 3.5 Flash"},
+    "gemini-3.5-flash-thinking": {"mode": 2, "think": 0, "desc": "Gemini Flash Thinking"},
+    "gemini-3.5-flash-thinking-lite": {"mode": 5, "think": 0, "desc": "Gemini Flash Thinking Lite"},
+    "gemini-3.1-pro": {"mode": 3, "think": 4, "desc": "Gemini Pro"},
+    "gemini-3.1-pro-enhanced": {
+        "mode": 3,
+        "think": 4,
+        "extra": {31: 2, 80: 3},
+        "desc": "Gemini Pro Enhanced",
+    },
     "gemini-2.5-flash": {"mode": 1, "think": 4, "desc": "Gemini 2.5 Flash"},
     "gemini-flash-latest": {"mode": 1, "think": 4, "desc": "Gemini Flash Latest"},
     "gemini-flash-lite": {"mode": 6, "think": 4, "desc": "Gemini Flash Lite"},
     "gemini-auto": {"mode": 4, "think": 4, "desc": "Gemini Auto"},
 }
 
-DEFAULT_MODEL = "gemini-2.5-flash"
-GEMINI_BL_VERSION = "boq_assistant-bard-web-server_20260716.08_p0"
+DEFAULT_MODEL = "gemini-3.6-flash"
 
 
 class GeminiWebError(RuntimeError):
@@ -120,18 +135,45 @@ def is_configured() -> bool:
     return GEMINI_WEB_ENABLED
 
 
+def account_prefix() -> str:
+    """Returns the Gemini account URL prefix for non-default Google accounts."""
+    if not GEMINI_WEB_AUTH_USER:
+        return ""
+    return f"/u/{GEMINI_WEB_AUTH_USER}"
+
+
 # ---------------------------------------------------------------------------
 # Protocol & Payload Construction
 # ---------------------------------------------------------------------------
 
-def resolve_model_specs(model_name: str) -> Tuple[str, int, int]:
-    """Resolves model string to (model_name, mode_id, think_mode)."""
-    norm = model_name.strip().lower()
-    cfg = MODELS_CONFIG.get(norm, MODELS_CONFIG.get(DEFAULT_MODEL, {"mode": 1, "think": 4}))
-    return norm, cfg["mode"], cfg["think"]
+def resolve_model_specs(model_name: str) -> Tuple[str, int, int, Optional[Dict[int, Any]]]:
+    """Resolves model string to (model_name, mode_id, think_mode, extra_fields)."""
+    norm = (model_name or DEFAULT_MODEL).strip().lower()
+    think_override = None
+    if "@think=" in norm:
+        norm, think_str = norm.rsplit("@think=", 1)
+        try:
+            think_override = int(think_str)
+        except ValueError:
+            logger.warning(f"[Gemini Web] Invalid think override '{think_str}', using model default.")
+
+    cfg = MODELS_CONFIG.get(norm)
+    if not cfg:
+        logger.warning(f"[Gemini Web] Unknown model '{norm}', falling back to '{DEFAULT_MODEL}'.")
+        norm = DEFAULT_MODEL
+        cfg = MODELS_CONFIG[DEFAULT_MODEL]
+
+    think_mode = think_override if think_override is not None else cfg["think"]
+    return norm, cfg["mode"], think_mode, cfg.get("extra")
 
 
-def build_request_payload(prompt: str, model_id: int, think_mode: int, enforce_temporary_chat: bool = True) -> str:
+def build_request_payload(
+    prompt: str,
+    model_id: int,
+    think_mode: int,
+    enforce_temporary_chat: bool = True,
+    extra_fields: Optional[Dict[int, Any]] = None,
+) -> str:
     """
     Constructs Google's internal StreamGenerate RPC payload.
     Enforces temporary chat persistence flag (inner[41]=[1], inner[45]=1)
@@ -162,21 +204,29 @@ def build_request_payload(prompt: str, model_id: int, think_mode: int, enforce_t
     inner[61] = []
     inner[68] = 1
     inner[79] = model_id
+    if extra_fields:
+        for index, value in extra_fields.items():
+            inner[index] = value
 
     outer = [None, json.dumps(inner)]
     params = {"f.req": json.dumps(outer)}
+    if GEMINI_WEB_XSRF_TOKEN:
+        params["at"] = GEMINI_WEB_XSRF_TOKEN
     return urllib.parse.urlencode(params)
 
 
 def build_request_headers(cookie_str: str, sapisid: Optional[str]) -> Dict[str, str]:
     """Builds required browser-mimicking headers with masked authorization."""
+    prefix = account_prefix()
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
         "Origin": "https://gemini.google.com",
-        "Referer": "https://gemini.google.com/app",
+        "Referer": f"https://gemini.google.com{prefix}/app",
         "X-Same-Domain": "1",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
     }
+    if GEMINI_WEB_AUTH_USER:
+        headers["X-Goog-AuthUser"] = GEMINI_WEB_AUTH_USER
     if cookie_str:
         headers["Cookie"] = cookie_str
     if sapisid:
@@ -251,7 +301,7 @@ def generate(
     prompt: str,
     system_instruction: Optional[str] = None,
     model: Optional[str] = None,
-    timeout_sec: float = 90.0,
+    timeout_sec: Optional[float] = None,
 ) -> str:
     """
     Executes an in-process generation request to Gemini Web with full error handling.
@@ -261,7 +311,7 @@ def generate(
         raise GeminiWebError("Gemini Web client is disabled in configuration.")
 
     target_model = model or GEMINI_WEB_MODEL or DEFAULT_MODEL
-    model_name, mode_id, think_mode = resolve_model_specs(target_model)
+    model_name, mode_id, think_mode, extra_fields = resolve_model_specs(target_model)
 
     cookie_str, sapisid = get_cookie_credentials()
     auth_desc = "cookie-authenticated" if cookie_str else "anonymous (zero-auth)"
@@ -283,28 +333,40 @@ def generate(
         model_id=mode_id,
         think_mode=think_mode,
         enforce_temporary_chat=True,
+        extra_fields=extra_fields,
     )
 
     reqid = int(time.time()) % 1000000
+    prefix = account_prefix()
     url = (
-        f"https://gemini.google.com/_/BardChatUi/data/"
+        f"https://gemini.google.com{prefix}/_/BardChatUi/data/"
         f"assistant.lamda.BardFrontendService/StreamGenerate"
-        f"?bl={GEMINI_BL_VERSION}&hl=en&_reqid={reqid}&rt=c"
+        f"?bl={GEMINI_WEB_BL}&hl=en&_reqid={reqid}&rt=c"
     )
 
     headers = build_request_headers(cookie_str, sapisid)
 
     # Execute request over HTTPS with strict SSL verification
-    try:
-        with httpx.Client(timeout=timeout_sec, verify=True) as client:
-            resp = client.post(url, content=payload_body.encode("utf-8"), headers=headers)
-            resp.raise_for_status()
-            raw_text = resp.text
-    except httpx.TimeoutException as e:
-        raise GeminiWebError(f"Gemini Web request timed out after {timeout_sec}s: {e}") from e
-    except httpx.HTTPStatusError as e:
-        raise GeminiWebError(f"Gemini Web HTTP error {e.response.status_code}: {e.response.text[:200]}") from e
-    except Exception as e:
-        raise GeminiWebError(f"Gemini Web connection failure: {e}") from e
+    last_error = None
+    request_timeout = timeout_sec or GEMINI_WEB_TIMEOUT_SEC
+    for attempt in range(max(GEMINI_WEB_RETRY_ATTEMPTS, 1)):
+        try:
+            transport = httpx.HTTPTransport(proxy=GEMINI_WEB_PROXY) if GEMINI_WEB_PROXY else None
+            with httpx.Client(timeout=request_timeout, verify=True, transport=transport) as client:
+                resp = client.post(url, content=payload_body.encode("utf-8"), headers=headers)
+                resp.raise_for_status()
+                raw_text = resp.text
+            return parse_stream_response(raw_text)
+        except httpx.TimeoutException as e:
+            last_error = GeminiWebError(f"Gemini Web request timed out after {request_timeout}s: {e}")
+        except httpx.HTTPStatusError as e:
+            last_error = GeminiWebError(f"Gemini Web HTTP error {e.response.status_code}: {e.response.text[:200]}")
+        except GeminiWebError as e:
+            last_error = e
+        except Exception as e:
+            last_error = GeminiWebError(f"Gemini Web connection failure: {e}")
 
-    return parse_stream_response(raw_text)
+        if attempt < max(GEMINI_WEB_RETRY_ATTEMPTS, 1) - 1:
+            time.sleep(GEMINI_WEB_RETRY_DELAY_SEC)
+
+    raise last_error or GeminiWebError("Gemini Web generation failed.")

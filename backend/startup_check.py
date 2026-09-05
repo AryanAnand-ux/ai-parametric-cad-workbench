@@ -36,12 +36,14 @@ print("=" * 60)
 # Check API keys
 import os
 from dotenv import load_dotenv
+from pathlib import Path
+load_dotenv(Path(__file__).resolve().parent / ".env")
 load_dotenv()
 
 gemini_key = os.getenv("GEMINI_API_KEY", "")
 groq_key   = os.getenv("GROQ_API_KEY", "")
 web_cookie = os.getenv("GEMINI_WEB_COOKIE", "")
-web_enabled = os.getenv("GEMINI_WEB_ENABLED", "true").lower() in ("true", "1", "yes")
+web_enabled = os.getenv("GEMINI_WEB_ENABLED", "false").lower() in ("true", "1", "yes")
 
 print(f"  [{'OK' if gemini_key else 'WARN'}]   GEMINI_API_KEY {'configured' if gemini_key else 'NOT SET (Gemini API tiers will fail)'}")
 print(f"  [{'OK' if web_enabled else 'WARN'}]   GEMINI_WEB     {'enabled (' + ('cookie-authenticated' if web_cookie else 'anonymous zero-auth') + ')' if web_enabled else 'disabled'}")

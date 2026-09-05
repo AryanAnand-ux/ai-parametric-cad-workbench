@@ -25,12 +25,17 @@ from services.llm_service import LLMService
 
 def test_resolve_model_specs():
     """Verify supported model names map to proper RPC mode IDs."""
-    model, mode, think = resolve_model_specs("gemini-2.5-flash")
+    model, mode, think, extra = resolve_model_specs("gemini-2.5-flash")
     assert mode == 1
     assert think == 4
+    assert extra is None
 
-    model, mode, think = resolve_model_specs("gemini-flash-lite")
+    model, mode, think, extra = resolve_model_specs("gemini-flash-lite")
     assert mode == 6
+
+    model, mode, think, extra = resolve_model_specs("gemini-3.5-flash-thinking@think=2")
+    assert mode == 2
+    assert think == 2
 
 
 def test_payload_privacy_flags():

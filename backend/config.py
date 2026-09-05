@@ -39,7 +39,14 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GEMINI_WEB_ENABLED = os.getenv("GEMINI_WEB_ENABLED", "false").strip().lower() in ("true", "1", "yes")
 GEMINI_WEB_COOKIE = os.getenv("GEMINI_WEB_COOKIE", "")
 GEMINI_WEB_COOKIE_FILE = os.getenv("GEMINI_WEB_COOKIE_FILE", str(BASE_DIR / ".gemini_cookie"))
-GEMINI_WEB_MODEL = os.getenv("GEMINI_WEB_MODEL", "gemini-2.5-flash")
+GEMINI_WEB_MODEL = os.getenv("GEMINI_WEB_MODEL", "gemini-3.6-flash")
+GEMINI_WEB_BL = os.getenv("GEMINI_WEB_BL", "boq_assistant-bard-web-server_20260716.08_p0")
+GEMINI_WEB_AUTH_USER = os.getenv("GEMINI_WEB_AUTH_USER", "").strip()
+GEMINI_WEB_XSRF_TOKEN = os.getenv("GEMINI_WEB_XSRF_TOKEN", "").strip()
+GEMINI_WEB_PROXY = os.getenv("GEMINI_WEB_PROXY", "").strip()
+GEMINI_WEB_RETRY_ATTEMPTS = int(os.getenv("GEMINI_WEB_RETRY_ATTEMPTS", "3"))
+GEMINI_WEB_RETRY_DELAY_SEC = float(os.getenv("GEMINI_WEB_RETRY_DELAY_SEC", "2"))
+GEMINI_WEB_TIMEOUT_SEC = float(os.getenv("GEMINI_WEB_TIMEOUT_SEC", "180"))
 
 # Standalone Gemini-Web2API Proxy Service Settings
 GEMINI_WEB2API_HOST = os.getenv("GEMINI_WEB2API_HOST", "127.0.0.1")  # Strictly loopback for security

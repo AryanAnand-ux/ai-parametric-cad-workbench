@@ -30,7 +30,10 @@ copy .env.example .env     # Windows
 
 > **Add your API Key in `.env`:**
 > `GEMINI_API_KEY=your_key_here` (Free from [Google AI Studio](https://aistudio.google.com/apikey))  
-> `GROQ_API_KEY=your_key_here` *(optional fallback)*
+> `GEMINI_WEB_ENABLED=true` *(optional Gemini Web fallback; anonymous mode works for basic access)*\
+> `GROQ_API_KEY=your_key_here` *(optional Groq fallback)*
+
+The backend tries the official Gemini API first, then Gemini Web when enabled, then Groq if configured. For Gemini Web cookie-authenticated access, set `GEMINI_WEB_COOKIE` or `GEMINI_WEB_COOKIE_FILE`; advanced options such as `GEMINI_WEB_AUTH_USER`, `GEMINI_WEB_XSRF_TOKEN`, `GEMINI_WEB_BL`, proxy, retry, and timeout controls are documented in `backend/.env.example`.
 
 Run pre-flight check & start server:
 ```bash
@@ -57,7 +60,7 @@ npm run dev
 
 ### Production Docker Setup
 
-Copy `backend/.env.example` to `backend/.env`, add the required LLM key, and set a strong `ADMIN_TOKEN`. Then run:
+Copy `backend/.env.example` to `backend/.env`, add the required LLM key or enable `GEMINI_WEB_ENABLED=true`, and set a strong `ADMIN_TOKEN`. Then run:
 
 ```bash
 docker compose up --build
@@ -72,7 +75,7 @@ Complex generation and chat-to-modify requests allow up to five minutes by defau
 ## 🌟 Key System Features
 
 - 🧊 **Real CAD Solid Engine (`build123d` + OpenCASCADE)**: Generates true boundary-representation (B-Rep) solid models with exact CSG operations, fillets, chamfers, and STEP/STL export.
-- 🧠 **69-Example RAG Vector Store**: Uses local `sentence-transformers/all-MiniLM-L6-v2` embeddings in ChromaDB to retrieve top-3 CAD code examples for few-shot LLM prompt injection across 4 engineering domains (Flanges, Brackets, Enclosures, Aerospace/Robotics).
+- 🧠 **100-Example RAG Vector Store**: Uses local `sentence-transformers/all-MiniLM-L6-v2` embeddings in ChromaDB to retrieve top-3 CAD code examples for few-shot LLM prompt injection across multiple engineering domains.
 - 💬 **Chat-to-Modify (`POST /api/modify`)**: Conversationally refine generated models with natural language (e.g., *"Make the walls 2mm thicker"*, *"Add 4x M3 mounting holes"*) without losing parameter continuity. Creates versioned scripts (`_v1`, `_v2`...).
 - ⚡ **Sub-200ms Parametric Recomputation**: Adjusting UI sliders recomputes solid geometry directly via `build123d` in real-time without invoking LLM tokens.
 - 📊 **20-Prompt Benchmark Harness**: `backend/benchmark_eval.py` evaluates diverse mechanical engineering parts and records latency, model, self-correction, and geometry metrics in `benchmark_results.json`.
@@ -120,14 +123,16 @@ ai-parametric-cad-workbench/
 │   │   ├── cad_runner.py     ← Subprocess Executor, AST Security Sandbox, Stripped Env Vars, & Mesh Inspector
 │   │   ├── prompts.py        ← 15 Strict CAD Code Rules, System Prompts, & RAG Templates
 │   │   ├── rag_service.py    ← ChromaDB Indexing, SentenceTransformers Embedding, & Retrieval
-│   │   ├── llm_service.py    ← Gemini Multi-Model Fallback Chain & Self-Correction
+│   │   ├── llm_service.py    ← Gemini API, Gemini Web, and Groq Fallback Chain & Self-Correction
+│   │   ├── gemini_web_client.py ← In-Process Gemini Web StreamGenerate Client
 │   │   ├── exporter.py       ← STL, STEP, and OBJ Geometry Exporter
 │   │   └── cleanup.py        ← Temporary CAD Artifact Lifecycle Manager
 │   └── rag_corpus/
 │       ├── examples_week4.py ← Basic CAD Snippets (plates, brackets, tubes)
 │       ├── examples_week5.py ← Mechanical CAD Snippets (couplings, pulleys, gears)
 │       ├── examples_week8.py ← Multi-Body Parts (chassis, deadcat drone arms)
-│       └── examples_engineering.py ← High-Tolerance Industrial & Aerospace Parts (69 total)
+│       ├── examples_engineering.py ← High-Tolerance Industrial & Aerospace Parts
+│       └── examples_complex.py ← High-Difficulty Engineering & Mechanical CAD Examples
 └── frontend/
     ├── index.html            ← Main HTML Template with Google Fonts
     ├── vite.config.js        ← Vite Config with Backend Proxy & Vendor Chunk Splitting
@@ -150,7 +155,7 @@ ai-parametric-cad-workbench/
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/health` | Service health status, storage readiness, & LLM configuration |
-| `POST` | `/api/generate` | **Primary:** NL prompt → RAG (69 parts) → LLM → execute → 3D STL + STEP *(Rate limited)* |
+| `POST` | `/api/generate` | **Primary:** NL prompt → RAG (100 examples) → LLM → execute → 3D STL + STEP *(Rate limited)* |
 | `POST` | `/api/modify` | **Chat-to-Modify:** Refine existing script via natural language prompt *(Rate limited)* |
 | `POST` | `/api/recompute` | Fast parametric slider recomputation (sub-200ms, no LLM call) *(Rate limited)* |
 | `GET` | `/api/script/{id}` | Retrieve raw generated `build123d` Python script by ID *(Requires admin token in production)* |
@@ -188,6 +193,5 @@ npm run build
 | Member | Primary Focus & Deliverables |
 |---|---|
 | **Member 1 (Aryan Anand)** | Full Pipeline Architecture, LLM Multi-Model Orchestrator, AST Security Sandbox, FastAPI Backend, 15 Strict CAD Rules |
-| **Member 2** | ChromaDB Vector Store & Local Embeddings (SentenceTransformers), 69-Part RAG Corpus Engineering, Geometry Topology Validation |
+| **Member 2** | ChromaDB Vector Store & Local Embeddings (SentenceTransformers), 100-Example RAG Corpus Engineering, Geometry Topology Validation |
 | **Member 3** | React 19 Frontend Architecture, React Three Fiber 3D WebGL Canvas, Neobrutalist Bento UI, Real-Time Parametric Sliders |
-
