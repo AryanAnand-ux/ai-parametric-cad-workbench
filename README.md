@@ -75,7 +75,7 @@ Complex generation and chat-to-modify requests allow up to five minutes by defau
 ## 🌟 Key System Features
 
 - 🧊 **Real CAD Solid Engine (`build123d` + OpenCASCADE)**: Generates true boundary-representation (B-Rep) solid models with exact CSG operations, fillets, chamfers, and STEP/STL export.
-- 🧠 **100-Example RAG Vector Store**: Uses local `sentence-transformers/all-MiniLM-L6-v2` embeddings in ChromaDB to retrieve top-3 CAD code examples for few-shot LLM prompt injection across multiple engineering domains.
+- 🧠 **101-Example RAG Vector Store**: Uses local `sentence-transformers/all-MiniLM-L6-v2` embeddings in ChromaDB to retrieve top-3 CAD code examples for few-shot LLM prompt injection across multiple engineering domains.
 - 💬 **Chat-to-Modify (`POST /api/modify`)**: Conversationally refine generated models with natural language (e.g., *"Make the walls 2mm thicker"*, *"Add 4x M3 mounting holes"*) without losing parameter continuity. Creates versioned scripts (`_v1`, `_v2`...).
 - ⚡ **Sub-200ms Parametric Recomputation**: Adjusting UI sliders recomputes solid geometry directly via `build123d` in real-time without invoking LLM tokens.
 - 📊 **20-Prompt Benchmark Harness**: `backend/benchmark_eval.py` evaluates diverse mechanical engineering parts and records latency, model, self-correction, and geometry metrics in `benchmark_results.json`.
@@ -125,7 +125,6 @@ ai-parametric-cad-workbench/
 │   │   ├── rag_service.py    ← ChromaDB Indexing, SentenceTransformers Embedding, & Retrieval
 │   │   ├── llm_service.py    ← Gemini API, Gemini Web, and Groq Fallback Chain & Self-Correction
 │   │   ├── gemini_web_client.py ← In-Process Gemini Web StreamGenerate Client
-│   │   ├── exporter.py       ← STL, STEP, and OBJ Geometry Exporter
 │   │   └── cleanup.py        ← Temporary CAD Artifact Lifecycle Manager
 │   └── rag_corpus/
 │       ├── examples_week4.py ← Basic CAD Snippets (plates, brackets, tubes)
@@ -155,7 +154,7 @@ ai-parametric-cad-workbench/
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/health` | Service health status, storage readiness, & LLM configuration |
-| `POST` | `/api/generate` | **Primary:** NL prompt → RAG (100 examples) → LLM → execute → 3D STL + STEP *(Rate limited)* |
+| `POST` | `/api/generate` | **Primary:** NL prompt → RAG (101 examples) → LLM → execute → 3D STL + STEP *(Rate limited)* |
 | `POST` | `/api/modify` | **Chat-to-Modify:** Refine existing script via natural language prompt *(Rate limited)* |
 | `POST` | `/api/recompute` | Fast parametric slider recomputation (sub-200ms, no LLM call) *(Rate limited)* |
 | `GET` | `/api/script/{id}` | Retrieve raw generated `build123d` Python script by ID *(Requires admin token in production)* |
@@ -193,5 +192,5 @@ npm run build
 | Member | Primary Focus & Deliverables |
 |---|---|
 | **Member 1 (Aryan Anand)** | Full Pipeline Architecture, LLM Multi-Model Orchestrator, AST Security Sandbox, FastAPI Backend, 15 Strict CAD Rules |
-| **Member 2** | ChromaDB Vector Store & Local Embeddings (SentenceTransformers), 100-Example RAG Corpus Engineering, Geometry Topology Validation |
+| **Member 2** | ChromaDB Vector Store & Local Embeddings (SentenceTransformers), 101-Example RAG Corpus Engineering, Geometry Topology Validation |
 | **Member 3** | React 19 Frontend Architecture, React Three Fiber 3D WebGL Canvas, Neobrutalist Bento UI, Real-Time Parametric Sliders |

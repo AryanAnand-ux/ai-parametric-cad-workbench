@@ -129,7 +129,9 @@ export default function App({ onGoHome }) {
 
   // Debounce timer for slider recomputation
   const debounceTimerRef = useRef(null);
+  const scrollTimerRef = useRef(null);
   const recomputeSequenceRef = useRef(0);
+  const paramValuesRef = useRef(_p.paramValues ?? {});
 
   // Health check on mount + debounce timer cleanup
   useEffect(() => {
@@ -139,6 +141,7 @@ export default function App({ onGoHome }) {
 
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
     };
   }, []);
 
@@ -187,6 +190,7 @@ export default function App({ onGoHome }) {
     setModelUsed(res.model_used);
     setDesignMode(res.design_mode || 'single_solid');
     setComponents(res.components || null);
+    paramValuesRef.current = initialValues;
     setParamValues(initialValues);
 
     // Persist model state so page refresh restores the last model
@@ -268,7 +272,8 @@ export default function App({ onGoHome }) {
     setDescription(lastState.description);
     setPythonCode(lastState.pythonCode);
     setParameters(lastState.parameters || []);
-    setParamValues(lastState.paramValues || {});
+    paramValuesRef.current = lastState.paramValues || {};
+    setParamValues(paramValuesRef.current);
     setMeshUrl(lastState.meshUrl);
     setStepUrl(lastState.stepUrl);
     setMeshInfo(lastState.meshInfo || {});
@@ -319,50 +324,48 @@ export default function App({ onGoHome }) {
       ]);
     } finally {
       setModifying(false);
-      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+      scrollTimerRef.current = setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
     }
   };
 
   // Slider change -> fast /api/recompute (<200ms)
   const handleParamChange = useCallback((name, value) => {
     const requestSequence = ++recomputeSequenceRef.current;
-    setParamValues((prev) => {
-      const nextValues = { ...prev, [name]: value };
+    paramValuesRef.current = { ...paramValuesRef.current, [name]: value };
+    setParamValues(paramValuesRef.current);
 
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
 
-      debounceTimerRef.current = setTimeout(async () => {
-        if (!scriptId || !pythonCode) return;
-        setRecomputing(true);
+    debounceTimerRef.current = setTimeout(async () => {
+      if (!scriptId || !pythonCode) return;
+      setRecomputing(true);
 
-        try {
-          const res = await recomputePart(
-            scriptId,
-            pythonCode,
-            nextValues,
-            parameters,
-            designMode,
-            components,
-          );
-          if (requestSequence !== recomputeSequenceRef.current) return;
-          setMeshUrl(res.mesh_url);
-          setStepUrl(res.step_url);
-          setMeshInfo(res.mesh_info || {});
-          setRecompTime(res.recomputation_time_ms);
-          setError(null);
-        } catch (err) {
-          if (requestSequence !== recomputeSequenceRef.current) return;
-          console.error('[Recompute error]', err);
-          const detail = err.response?.data?.detail;
-          const msg = typeof detail === 'string' ? detail : (detail?.error || err.message || 'Recomputation failed.');
-          setError(`Recomputation error: ${msg}`);
-        } finally {
-          if (requestSequence === recomputeSequenceRef.current) setRecomputing(false);
-        }
-      }, 120);
-
-      return nextValues;
-    });
+      try {
+        const res = await recomputePart(
+          scriptId,
+          pythonCode,
+          paramValuesRef.current,
+          parameters,
+          designMode,
+          components,
+        );
+        if (requestSequence !== recomputeSequenceRef.current) return;
+        setMeshUrl(res.mesh_url);
+        setStepUrl(res.step_url);
+        setMeshInfo(res.mesh_info || {});
+        setRecompTime(res.recomputation_time_ms);
+        setError(null);
+      } catch (err) {
+        if (requestSequence !== recomputeSequenceRef.current) return;
+        console.error('[Recompute error]', err);
+        const detail = err.response?.data?.detail;
+        const msg = typeof detail === 'string' ? detail : (detail?.error || err.message || 'Recomputation failed.');
+        setError(`Recomputation error: ${msg}`);
+      } finally {
+        if (requestSequence === recomputeSequenceRef.current) setRecomputing(false);
+      }
+    }, 120);
   }, [parameters, scriptId, pythonCode, designMode, components]);
 
   // Reset all sliders to defaults AND trigger recompute on canvas
@@ -371,6 +374,8 @@ export default function App({ onGoHome }) {
     const resetVals = {};
     parameters.forEach((p) => { resetVals[p.name] = p.default; });
     const requestSequence = ++recomputeSequenceRef.current;
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    paramValuesRef.current = resetVals;
     setParamValues(resetVals);
     setRecomputing(true);
     try {

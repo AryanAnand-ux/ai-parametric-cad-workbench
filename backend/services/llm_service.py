@@ -14,6 +14,8 @@ Flow:
 """
 
 import os
+import re
+import ast
 import json
 import logging
 from typing import Tuple, Optional
@@ -28,13 +30,6 @@ from services import gemini_web_client
 
 logger = logging.getLogger("cad_workbench.llm_service")
 
-
-# ---------------------------------------------------------------------------
-# Response Parser (shared by all model tiers)
-# ---------------------------------------------------------------------------
-
-import re
-import ast
 
 # ---------------------------------------------------------------------------
 # Robust Response Parser (Handles escaped/unescaped quotes and control chars)

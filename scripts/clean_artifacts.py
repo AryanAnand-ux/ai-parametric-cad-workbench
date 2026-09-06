@@ -3,8 +3,7 @@ clean_artifacts.py — Cross-platform artifact cleanup script.
 
 Cleans:
   - Python bytecode and __pycache__ directories
-  - Stale temporary model files in backend/temp and backend/static/models
-  - Scratch/temp directories
+  - Stale temporary CAD model files under scratch/ (STL/STEP/PY artifacts)
   - Frontend build cache/artifacts (dist)
 """
 
@@ -46,21 +45,7 @@ def clean():
                 except OSError:
                     pass
 
-    # 2. Clean backend temporary directories
-    backend_temp = REPO_ROOT / "backend" / "temp"
-    if backend_temp.exists():
-        for item in backend_temp.iterdir():
-            try:
-                if item.is_file():
-                    item.unlink()
-                    removed_files += 1
-                elif item.is_dir():
-                    shutil.rmtree(item, ignore_errors=True)
-                    removed_dirs += 1
-            except OSError:
-                pass
-
-    # 3. Clean scratch/temp
+    # 2. Clean scratch/temp artifacts (STL/STEP/PY outputs live under scratch/temp)
     scratch_dir = REPO_ROOT / "scratch"
     if scratch_dir.exists():
         for item in scratch_dir.glob("**/*"):

@@ -169,9 +169,15 @@ function STLMesh({
   }, [url, onGeometryLoaded, onError]);
 
   // Extract sharp mechanical feature edges (>24 deg) without triangulating curved faces
+  const edgesRef = useRef(null);
   const edgesGeo = useMemo(() => {
-    if (!geometry) return null;
-    return new THREE.EdgesGeometry(geometry, 24);
+    if (edgesRef.current) edgesRef.current.dispose();
+    if (!geometry) {
+      edgesRef.current = null;
+      return null;
+    }
+    edgesRef.current = new THREE.EdgesGeometry(geometry, 24);
+    return edgesRef.current;
   }, [geometry]);
 
   if (!geometry) return null;

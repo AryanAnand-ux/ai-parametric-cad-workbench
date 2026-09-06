@@ -8,11 +8,13 @@
  */
 
 export default function ParameterSlider({ param, value, onChange }) {
+  // Defensive fallback for steps that the backend may omit on some payloads
+  const stepVal = param.step ?? 1.0;
   // Dynamic decimal places based on step precision — computed FIRST so it's
   // available inside handleStepChange (which would cause a ReferenceError otherwise)
-  const decimals = Number.isInteger(param.step)
+  const decimals = Number.isInteger(stepVal)
     ? 0
-    : (param.step.toString().split('.')[1]?.length || 1);
+    : (stepVal.toString().split('.')[1]?.length || 1);
 
   // Safe percentage calculation — prevents NaN / Infinity if min === max
   const range = param.max - param.min;
@@ -31,9 +33,8 @@ export default function ParameterSlider({ param, value, onChange }) {
   };
 
   const handleStepChange = (direction) => {
-    const step = param.step || 1.0;
     const current = typeof value === 'number' && !isNaN(value) ? value : param.default;
-    const next = Math.max(param.min, Math.min(param.max, current + direction * step));
+    const next = Math.max(param.min, Math.min(param.max, current + direction * stepVal));
     onChange(param.name, parseFloat(next.toFixed(decimals)));
   };
 
@@ -95,7 +96,7 @@ export default function ParameterSlider({ param, value, onChange }) {
           type="button"
           className="param-stepper-btn"
           onClick={() => handleStepChange(-1)}
-          title={`Decrease by ${param.step}`}
+          title={`Decrease by ${stepVal}`}
         >
           -
         </button>
@@ -121,7 +122,7 @@ export default function ParameterSlider({ param, value, onChange }) {
           type="button"
           className="param-stepper-btn"
           onClick={() => handleStepChange(1)}
-          title={`Increase by ${param.step}`}
+          title={`Increase by ${stepVal}`}
         >
           +
         </button>

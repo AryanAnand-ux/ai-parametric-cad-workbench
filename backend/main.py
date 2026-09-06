@@ -49,6 +49,12 @@ class SimpleRateLimiter:
         now = time.time()
         cutoff = now - 60.0
         async with self.lock:
+            # Prune stale / empty buckets so the limiter never accumulates unbounded memory
+            if len(self.history) > 256:
+                self.history = defaultdict(
+                    list,
+                    {k: v for k, v in self.history.items() if v and v[-1] > cutoff},
+                )
             timestamps = [t for t in self.history[client_ip] if t > cutoff]
             if len(timestamps) >= self.rpm:
                 raise HTTPException(
@@ -154,7 +160,7 @@ async def health_check():
 def require_artifact_access(filename: str, provided_token: str | None) -> Path:
     """Resolve a public mesh artifact while keeping generated Python source protected."""
     path = Path(filename)
-    if path.name != filename or path.suffix.lower() not in {".stl", ".step"} and path.suffix.lower() != ".py":
+    if path.name != filename or path.suffix.lower() not in {".stl", ".step", ".py"}:
         raise HTTPException(status_code=404, detail="Artifact not found.")
     if not is_safe_script_id(path.stem):
         raise HTTPException(status_code=404, detail="Artifact not found.")
@@ -260,12 +266,15 @@ async def generate_part(payload: GenerateRequest, background_tasks: BackgroundTa
     # If execution still failed after retries or early break, raise HTTPException
     is_geo_valid = execution_result.get("mesh_info", {}).get("is_valid", True) if execution_result else False
     if not execution_result or execution_result.get("status") != "success" or not is_geo_valid:
+        stderr_tail = (execution_result.get("stderr", "") if execution_result else "")[-2000:]
         raise HTTPException(
             status_code=422,
             detail={
                 "error": "CAD script execution or geometry topology failed after all self-correction attempts.",
+                "script_id": script_id,
                 "self_correction_attempts": self_correction_attempts,
                 "error_code": execution_result.get("error_type", "cad_execution_failed") if execution_result else "cad_execution_failed",
+                "stderr_tail": stderr_tail,
                 "geometry_warnings": execution_result.get("mesh_info", {}).get("geometry_warnings", []) if execution_result else [],
             }
         )
@@ -426,8 +435,6 @@ async def download_model(
     Download production-ready CAD artifacts (STEP / STL / PY).
     Returns a FileResponse with appropriate attachment headers.
     """
-    from fastapi.responses import FileResponse
-
     if not is_safe_script_id(script_id):
         raise HTTPException(status_code=400, detail="Invalid script identifier.")
     
@@ -560,12 +567,15 @@ async def modify_part(payload: ModifyRequest, background_tasks: BackgroundTasks,
 
     is_geo_valid = execution_result.get("mesh_info", {}).get("is_valid", True) if execution_result else False
     if not execution_result or execution_result.get("status") != "success" or not is_geo_valid:
+        stderr_tail = (execution_result.get("stderr", "") if execution_result else "")[-2000:]
         raise HTTPException(
             status_code=422,
             detail={
                 "error": "Modified CAD script execution or geometry topology failed after all self-correction attempts.",
+                "script_id": new_script_id,
                 "self_correction_attempts": self_correction_attempts,
                 "error_code": execution_result.get("error_type", "cad_execution_failed") if execution_result else "cad_execution_failed",
+                "stderr_tail": stderr_tail,
                 "geometry_warnings": execution_result.get("mesh_info", {}).get("geometry_warnings", []) if execution_result else [],
             }
         )

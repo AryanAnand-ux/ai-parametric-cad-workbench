@@ -97,12 +97,12 @@ with BuildPart() as part:
     for i in range(NR):
         angle = i * (360.0 / NR)
         rad = math.radians(angle)
-        rib_center_r = OR + RH / 2.0
+        rib_center_r = OR + RH / 2.0 - 1.0
         rx = rib_center_r * math.cos(rad)
         ry = rib_center_r * math.sin(rad)
         rib_len = L - FT
         with Locations(Location((rx, ry, FT + rib_len / 2.0), (0, 0, angle))):
-            Box(RH, RT, rib_len)
+            Box(RH + 2.0, RT, rib_len)
     # 4. Central stator through bore
     with Locations((0, 0, (L + FT) / 2.0)):
         Cylinder(radius=IR, height=(L + FT) * 2.0, mode=Mode.SUBTRACT)
@@ -1590,6 +1590,83 @@ with BuildPart() as part:
         with Locations((TR, T)):
             Circle(BGR)
     revolve(axis=Axis.Z, mode=Mode.SUBTRACT)
+
+export_stl(part.part, OUTPUT_STL)
+export_step(part.part, OUTPUT_STEP)
+"""
+    },
+    {
+        "id": 'automotive_spark_plug_parametric',
+        "description": 'Automotive spark plug with threaded steel shell, wrench band, ceramic insulator ribs, terminal post, center electrode, and L-shaped ground electrode',
+        "tags": ['spark plug', 'automotive spark plug', 'ignition', 'threaded shell', 'ceramic insulator', 'terminal post', 'center electrode', 'ground electrode', 'engine'],
+        "code": """\
+PARAMS = {
+    "shell_radius": 8.0,
+    "shell_length": 26.0,
+    "hex_width_flats": 18.0,
+    "hex_height": 8.0,
+    "ceramic_radius": 5.2,
+    "ceramic_length": 32.0,
+    "terminal_radius": 3.2,
+    "terminal_length": 10.0,
+    "electrode_dia": 2.0,
+    "ground_gap": 2.5,
+    "thread_ridge_count": 7
+}
+import math
+from build123d import *
+
+SR = PARAMS["shell_radius"]
+SL = PARAMS["shell_length"]
+HW = PARAMS["hex_width_flats"]
+HH = PARAMS["hex_height"]
+CR = PARAMS["ceramic_radius"]
+CL = PARAMS["ceramic_length"]
+TR = PARAMS["terminal_radius"]
+TL = PARAMS["terminal_length"]
+ED = PARAMS["electrode_dia"]
+GAP = PARAMS["ground_gap"]
+N = int(PARAMS["thread_ridge_count"])
+
+with BuildPart() as part:
+    # 1. Lower threaded steel shell.
+    with Locations((0, 0, SL / 2.0)):
+        Cylinder(radius=SR, height=SL)
+    # 2. Thread crests as shallow overlapping ribs around the shell.
+    pitch = SL / (N + 1)
+    for i in range(N):
+        z = pitch * (i + 1)
+        with Locations((0, 0, z)):
+            Cylinder(radius=SR + 0.55, height=0.9)
+    # 3. Wrench band fused across the shell and ceramic shoulder.
+    with Locations((0, 0, SL + HH / 2.0 - 3.0)):
+        Cylinder(radius=HW / 2.0, height=HH + 6.0)
+    # 4. Ceramic insulator, fused through the wrench band and extending upward.
+    ceramic_base_z = SL + HH - 4.0
+    with Locations((0, 0, ceramic_base_z + CL / 2.0)):
+        Cylinder(radius=CR, height=CL)
+    # 5. Ribbed ceramic profile.
+    for j, rr in enumerate([CR + 0.7, CR + 1.0, CR + 0.7]):
+        with Locations((0, 0, ceramic_base_z + 9.0 + j * 5.0)):
+            Cylinder(radius=rr, height=1.4)
+    # 6. Top terminal post and cap with overlap.
+    top_z = ceramic_base_z + CL
+    with Locations((0, 0, top_z + TL / 2.0 - 0.5)):
+        Cylinder(radius=TR, height=TL + 1.0)
+    with Locations((0, 0, top_z + TL + 0.4)):
+        Cylinder(radius=TR + 1.4, height=2.0)
+    # 7. Center electrode through the lower nose.
+    with Locations((0, 0, -3.5)):
+        Cylinder(radius=ED / 2.0, height=SL + 6.0)
+    # 8. L-shaped ground electrode fused to shell side and bent toward center.
+    ground_z = -1.0
+    with Locations((SR - 0.6, 0, ground_z + 2.5)):
+        Box(ED, ED, 7.0)
+    with Locations((SR / 2.0 + GAP / 2.0, 0, ground_z + 5.0)):
+        Box(SR - GAP, ED, ED)
+    # 9. Small center nose detail.
+    with Locations((0, 0, -4.2)):
+        Cylinder(radius=ED * 0.65, height=2.5)
 
 export_stl(part.part, OUTPUT_STL)
 export_step(part.part, OUTPUT_STEP)
