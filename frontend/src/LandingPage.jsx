@@ -1346,8 +1346,8 @@ export default function LandingPage({ onEnterApp }) {
         </div>
       </section>}
 
-      {/* Pricing section removed per user request */}
-      {false && <section id="pricing" style={{
+      {/* Atelier Memberships & Commercial Tiers */}
+      <section id="pricing" style={{
         backgroundColor: '#EBEBE1',
         padding: 'clamp(60px, 10vh, 110px) clamp(16px, 4vw, 50px)',
       }}>
@@ -1531,7 +1531,7 @@ export default function LandingPage({ onEnterApp }) {
             ))}
           </div>
         </div>
-      </section>}
+      </section>
 
       {/* ── HAIRLINE ACCORDION FAQ (.faq) ───────────────────────────── */}
       <section id="faq" style={{

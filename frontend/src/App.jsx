@@ -14,7 +14,21 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Viewer3D, { MATERIAL_PRESETS } from './components/Viewer3D';
 import ParameterSlider from './components/ParameterSlider';
-import { generatePart, recomputePart, healthCheck, modifyPart, resolveAssetUrl } from './api';
+import AuthModal from './components/AuthModal';
+import ProjectSidebar from './components/ProjectSidebar';
+import GenerationProgress from './components/GenerationProgress';
+import OnboardingTour from './components/OnboardingTour';
+import ShareModal from './components/ShareModal';
+import { useAuth } from './hooks/useAuth';
+import {
+  generatePart,
+  generatePartStream,
+  recomputePart,
+  healthCheck,
+  modifyPart,
+  resolveAssetUrl,
+  getGenerationDetail,
+} from './api';
 import { VISUAL_STYLES, VIEWPORT_BACKGROUNDS } from './constants/visualStyles';
 
 // Build a full URL for file downloads / static assets
@@ -120,6 +134,21 @@ export default function App({ onGoHome }) {
   const [modelHistory, setModelHistory] = useState([]);
   const [showDimensions, setShowDimensions] = useState(true);
 
+  // Auth & Project Workspace State
+  const { user, isAuthenticated, login, register, logout } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showProjectSidebar, setShowProjectSidebar] = useState(false);
+
+  // SSE Stream state
+  const [streamPhase, setStreamPhase] = useState('rag_retrieval');
+  const [streamProgress, setStreamProgress] = useState(0);
+  const [streamMessage, setStreamMessage] = useState('');
+  const [streamAttempts, setStreamAttempts] = useState(0);
+
+  // Guided Onboarding & Sharing States
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+
   // Sidebar collapse
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -218,7 +247,7 @@ export default function App({ onGoHome }) {
     }
   };
 
-  // Submit prompt -> /api/generate
+  // Submit prompt -> /api/generate/stream with fallback to /api/generate
   const handleGenerate = async (overridePrompt) => {
     const activePrompt = overridePrompt || prompt;
     if (!activePrompt.trim() || loading) return;
@@ -226,14 +255,62 @@ export default function App({ onGoHome }) {
     setLoading(true);
     setError(null);
     setChatHistory([]);
+    setStreamPhase('rag_retrieval');
+    setStreamProgress(12);
+    setStreamMessage('Vector search across 101 CAD blueprints...');
+    setStreamAttempts(0);
 
     try {
-      const res = await generatePart(activePrompt);
+      const res = await generatePartStream(activePrompt, (evt) => {
+        if (evt.phase) setStreamPhase(evt.phase);
+        if (typeof evt.progress === 'number') setStreamProgress(evt.progress);
+        if (evt.message) setStreamMessage(evt.message);
+        if (evt.phase === 'self_correction') {
+          setStreamAttempts((a) => a + 1);
+        }
+      });
       applyPartResponse(res);
+    } catch (streamErr) {
+      console.warn('[SSE stream fallback to standard POST]', streamErr);
+      try {
+        const res = await generatePart(activePrompt);
+        applyPartResponse(res);
+      } catch (err) {
+        console.error('[Generate error]', err);
+        const detail = err.response?.data?.detail;
+        setError(typeof detail === 'string' ? detail : (detail?.error || err.message || streamErr.message || 'Generation failed. Check backend log.'));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Select and load a saved generation from the workspace drawer
+  const handleSelectGeneration = async (genId) => {
+    try {
+      setLoading(true);
+      setStreamPhase('cad_execution');
+      setStreamProgress(60);
+      setStreamMessage('Restoring saved workspace design...');
+      const gen = await getGenerationDetail(genId);
+      applyPartResponse({
+        script_id: gen.script_id,
+        part_name: gen.part_name,
+        description: gen.description,
+        python_code: gen.python_code,
+        parameters: gen.parameters || [],
+        mesh_url: gen.mesh_url,
+        step_url: gen.step_url,
+        mesh_info: gen.mesh_info || {},
+        recomputation_time_ms: gen.generation_time_ms,
+        model_used: gen.model_used,
+        design_mode: gen.design_mode || 'single_solid',
+        components: gen.components || null,
+      });
+      setShowProjectSidebar(false);
     } catch (err) {
-      console.error('[Generate error]', err);
-      const detail = err.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : (detail?.error || err.message || 'Generation failed. Check backend log.'));
+      console.error('Failed to load saved model:', err);
+      setError('Could not load saved model.');
     } finally {
       setLoading(false);
     }
@@ -654,6 +731,92 @@ export default function App({ onGoHome }) {
               <span>Inspect Code</span>
             </button>
           )}
+
+          {/* Workspaces & Saved Models */}
+          <button
+            className="toolbar-btn header-action-btn"
+            onClick={() => {
+              if (!isAuthenticated) {
+                setShowAuthModal(true);
+              } else {
+                setShowProjectSidebar(true);
+              }
+            }}
+            title="Open Workspaces & Saved Designs"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <span>📁</span>
+            <span>Workspaces</span>
+          </button>
+
+          {/* Share Design Modal Trigger */}
+          {scriptId && (
+            <button
+              className="toolbar-btn header-action-btn"
+              onClick={() => setShowShareModal(true)}
+              title="Share CAD Model or Copy 3D Embed"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <span>🔗</span>
+              <span>Share</span>
+            </button>
+          )}
+
+          {/* Guided Tour Trigger */}
+          <button
+            className="toolbar-btn header-action-btn"
+            onClick={() => setShowOnboarding(true)}
+            title="Launch Interactive CAD Studio Walkthrough"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+          >
+            <span>💡</span>
+            <span>Tour</span>
+          </button>
+
+          {/* Auth State Button */}
+          {isAuthenticated ? (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                className="toolbar-btn header-action-btn"
+                onClick={() => setShowProjectSidebar(true)}
+                title={`Account: ${user?.email}`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  borderColor: 'rgba(255, 253, 226, 0.35)',
+                }}
+              >
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#489235', display: 'inline-block' }} />
+                <span>{user?.display_name || user?.email?.split('@')[0]}</span>
+                <span style={{ fontSize: '10px', background: 'rgba(255, 253, 226, 0.15)', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+                  {user?.plan_tier || 'PRO'}
+                </span>
+              </button>
+              <button
+                className="toolbar-btn header-action-btn"
+                onClick={logout}
+                title="Sign Out"
+                style={{ padding: '6px 10px', fontSize: '11px', opacity: 0.8 }}
+              >
+                Log Out
+              </button>
+            </div>
+          ) : (
+            <button
+              className="toolbar-btn header-action-btn"
+              onClick={() => setShowAuthModal(true)}
+              style={{
+                background: '#FFFDE2',
+                color: '#474040',
+                fontWeight: 600,
+                borderColor: '#FFFDE2',
+              }}
+            >
+              Sign In
+            </button>
+          )}
+
           <div className="status-pill" style={{ borderColor: backendStatus === 'online' ? '#10B981' : '#EF4444' }}>
             <span
               className="status-dot"
@@ -1121,16 +1284,27 @@ export default function App({ onGoHome }) {
           </div>
         )}
 
-        {/* Generation Loading Overlay */}
+        {/* Generation Real-Time Pipeline Progress Overlay */}
         {loading && (
-          <div className="loading-overlay">
-            <div className="loading-card">
-              <div className="spinner loading-spinner-large" />
-              <div className="loading-title">Synthesizing Solid B-Rep Geometry...</div>
-              <div className="loading-sub">
-                ChromaDB k-NN Retrieval ➔ LLM Code Synthesis ➔ Subprocess AST Execution ➔ Manifold Validation
-              </div>
-            </div>
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 100,
+              backgroundColor: 'rgba(5, 7, 15, 0.85)',
+              backdropFilter: 'blur(8px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '24px',
+            }}
+          >
+            <GenerationProgress
+              currentPhase={streamPhase}
+              progress={streamProgress}
+              message={streamMessage}
+              attempts={streamAttempts}
+            />
           </div>
         )}
 
@@ -1211,6 +1385,45 @@ export default function App({ onGoHome }) {
           </div>
         )}
       </main>
+
+      {/* User Authentication Modal */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onLogin={login}
+        onRegister={register}
+      />
+
+      {/* Projects & Workspaces Drawer */}
+      <ProjectSidebar
+        isOpen={showProjectSidebar}
+        onClose={() => setShowProjectSidebar(false)}
+        onSelectGeneration={handleSelectGeneration}
+        currentScriptId={scriptId}
+      />
+
+      {/* Guided Onboarding Walkthrough */}
+      <OnboardingTour
+        isOpen={showOnboarding}
+        onClose={() => {
+          setShowOnboarding(false);
+          try {
+            localStorage.setItem('cad_onboarding_completed', 'true');
+          } catch {
+            // ignore
+          }
+        }}
+      />
+
+      {/* Share & Embed Modal */}
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        scriptId={scriptId}
+        partName={partName}
+        meshUrl={meshUrl ? fileUrl(meshUrl) : null}
+        stepUrl={stepUrl ? fileUrl(stepUrl) : null}
+      />
     </div>
   );
 }

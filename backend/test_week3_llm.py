@@ -174,7 +174,12 @@ async def test_5_full_api_import():
     """Test that all modules import cleanly and FastAPI app is valid."""
     print("\n[5/5] Testing FastAPI App Import & Schema...")
     from main import app
-    routes = [r.path for r in app.routes]
+    routes = []
+    for r in app.routes:
+        if hasattr(r, "path"):
+            routes.append(r.path)
+        elif hasattr(r, "original_router"):
+            routes.extend(getattr(sr, "path", "") for sr in r.original_router.routes)
     assert "/api/health" in routes
     assert "/api/generate" in routes
     assert "/api/recompute" in routes

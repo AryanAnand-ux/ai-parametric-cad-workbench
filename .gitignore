@@ -29,6 +29,9 @@ backend/temp/
 *.step
 *.obj
 *.glb
+*.db
+*.sqlite
+*.sqlite3
 
 # Logs
 *.log

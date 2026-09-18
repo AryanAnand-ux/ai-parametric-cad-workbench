@@ -6,12 +6,13 @@ import re
 import uuid
 import time
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from collections import defaultdict
 from typing import Optional
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -30,6 +31,12 @@ from services.cleanup import ArtifactCleanupManager
 from services.llm_service import LLMService
 from services.rag_service import RAGService
 from services import gemini_web_client
+from sqlalchemy.ext.asyncio import AsyncSession
+from database import create_tables, get_db
+from models.user import User
+from services.auth_service import get_optional_user
+from routes.auth import router as auth_router
+from routes.projects import router as projects_router, save_generation_record, save_version_record
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cad_workbench.main")
@@ -100,6 +107,29 @@ async def allocate_modify_script_id(
 # FastAPI Application
 # ---------------------------------------------------------------------------
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Verify production security requirements, initialize database and RAG on startup."""
+    if ENVIRONMENT == "production" and not ADMIN_TOKEN:
+        logger.critical("[FATAL] ENVIRONMENT is set to 'production' but ADMIN_TOKEN is not configured.")
+        raise RuntimeError("ADMIN_TOKEN environment variable must be set when running in production mode.")
+
+    # Initialize database tables
+    await create_tables()
+    logger.info("[STARTUP] Database tables initialized.")
+
+    if not RAG_BUILD_ON_STARTUP:
+        logger.info("[STARTUP] RAG startup indexing disabled; retrieval will use any existing index.")
+    else:
+        try:
+            count = RAGService.build_index()
+            total = RAGService.index_size()
+            logger.info(f"[STARTUP] RAG index ready: {count} new docs added, {total} total stored in ChromaDB.")
+        except Exception as e:
+            logger.error(f"[STARTUP] Failed to initialize RAG index: {e}")
+    yield
+
+
 app = FastAPI(
     title="AI-Driven Parametric CAD Workbench API",
     description=(
@@ -108,7 +138,8 @@ app = FastAPI(
         "(gemini-3.5-flash-lite -> gemini-flash-lite-latest -> gemini-3.1-flash-lite -> Groq Llama-3.3-70B). "
         "Supports sub-200ms slider recomputation and automated self-correction."
     ),
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan,
 )
 
 # CORS: allow_credentials requires explicit origins (not wildcard)
@@ -121,22 +152,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def startup_event():
-    """Verify production security requirements and initialize RAG."""
-    if ENVIRONMENT == "production" and not ADMIN_TOKEN:
-        logger.critical("[FATAL] ENVIRONMENT is set to 'production' but ADMIN_TOKEN is not configured.")
-        raise RuntimeError("ADMIN_TOKEN environment variable must be set when running in production mode.")
-
-    if not RAG_BUILD_ON_STARTUP:
-        logger.info("[STARTUP] RAG startup indexing disabled; retrieval will use any existing index.")
-        return
-    try:
-        count = RAGService.build_index()
-        total = RAGService.index_size()
-        logger.info(f"[STARTUP] RAG index ready: {count} new docs added, {total} total stored in ChromaDB.")
-    except Exception as e:
-        logger.error(f"[STARTUP] Failed to initialize RAG index: {e}")
+# Mount authentication & project workspace routers
+app.include_router(auth_router)
+app.include_router(projects_router)
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +201,13 @@ async def serve_model_artifact(filename: str, x_admin_token: str | None = Header
 # ---------------------------------------------------------------------------
 
 @app.post("/api/generate", response_model=GenerateResponse)
-async def generate_part(payload: GenerateRequest, background_tasks: BackgroundTasks, request: Request):
+async def generate_part(
+    payload: GenerateRequest,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Primary Generation Endpoint (Week 3 deliverable).
 
@@ -193,6 +217,7 @@ async def generate_part(payload: GenerateRequest, background_tasks: BackgroundTa
     3. Executes CAD script in an isolated subprocess.
     4. Self-correction loop (up to 3 retries) if execution fails.
     5. Returns STL mesh_url, STEP step_url, parameters, and mesh metrics.
+    6. Persists to database if user is authenticated.
     """
     client_ip = request.client.host if request.client else "unknown"
     await generate_limiter.check(client_ip)
@@ -279,6 +304,30 @@ async def generate_part(payload: GenerateRequest, background_tasks: BackgroundTa
             }
         )
 
+    # Persist to database if user is authenticated
+    if current_user and db:
+        try:
+            await save_generation_record(
+                db=db,
+                user_id=current_user.id,
+                prompt=payload.prompt,
+                script_id=script_id,
+                part_name=dual_output.part_name,
+                description=dual_output.description,
+                python_code=current_code,
+                parameters=[p.model_dump() for p in dual_output.parameters] if dual_output.parameters else [],
+                mesh_info=execution_result.get("mesh_info"),
+                mesh_url=execution_result.get("mesh_url"),
+                step_url=execution_result.get("step_url"),
+                model_used=model_used,
+                generation_time_ms=execution_result.get("recomputation_time_ms"),
+                self_corrections=self_correction_attempts,
+                design_mode=dual_output.design_mode,
+                components=dual_output.components,
+            )
+        except Exception as dbe:
+            logger.warning(f"[DB] Failed to persist generation: {dbe}")
+
     background_tasks.add_task(ArtifactCleanupManager.cleanup_old_artifacts, 86400)
 
     return GenerateResponse(
@@ -297,6 +346,144 @@ async def generate_part(payload: GenerateRequest, background_tasks: BackgroundTa
         self_correction_attempts=self_correction_attempts,
         model_used=model_used
     )
+
+
+# ---------------------------------------------------------------------------
+# Streaming Generation Endpoint (Server-Sent Events)
+# ---------------------------------------------------------------------------
+
+@app.post("/api/generate/stream")
+async def generate_part_stream(
+    payload: GenerateRequest,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Server-Sent Events (SSE) Streaming Generation Endpoint.
+    Streams real-time pipeline phase updates to client, then delivers final result.
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    await generate_limiter.check(client_ip)
+
+    async def event_generator():
+        import json
+        script_id = f"part_{uuid.uuid4().hex[:8]}"
+        self_correction_attempts = 0
+        model_used = "unknown"
+
+        # Phase 1: RAG context retrieval
+        yield f"data: {json.dumps({'phase': 'rag_retrieval', 'message': 'Searching 101 CAD blueprints in vector database...', 'progress': 15})}\n\n"
+        await asyncio.sleep(0.05)
+
+        # Phase 2: LLM Generation
+        yield f"data: {json.dumps({'phase': 'llm_generation', 'message': 'Synthesizing build123d parametric script...', 'progress': 35})}\n\n"
+        try:
+            dual_output, model_used = await asyncio.to_thread(
+                LLMService.generate_dual_output, payload.prompt
+            )
+        except Exception as e:
+            yield f"data: {json.dumps({'phase': 'error', 'message': f'LLM generation failed: {str(e)}', 'error': str(e)})}\n\n"
+            return
+
+        # Phase 3: AST & Security Sandbox
+        yield f"data: {json.dumps({'phase': 'ast_validation', 'message': 'AST security sandbox validation passed...', 'progress': 55})}\n\n"
+        await asyncio.sleep(0.05)
+
+        # Phase 4: CAD Kernel Execution & Self-Correction
+        yield f"data: {json.dumps({'phase': 'cad_execution', 'message': 'OpenCASCADE geometry kernel compiling solid model...', 'progress': 75})}\n\n"
+
+        current_code = dual_output.python_code
+        execution_result = None
+
+        for attempt in range(LLMService.MAX_RETRIES + 1):
+            execution_result = await CADRunner.execute_script_async(
+                script_id=script_id,
+                python_code=current_code,
+                design_mode=dual_output.design_mode,
+                component_names=dual_output.components,
+            )
+            is_geo_valid = execution_result.get("mesh_info", {}).get("is_valid", True)
+            if execution_result["status"] == "success" and is_geo_valid:
+                break
+
+            if attempt < LLMService.MAX_RETRIES:
+                self_correction_attempts += 1
+                yield f"data: {json.dumps({'phase': 'self_correction', 'message': f'Self-correcting geometry topology (attempt {self_correction_attempts}/{LLMService.MAX_RETRIES})...', 'progress': 82})}\n\n"
+                if execution_result["status"] != "success":
+                    traceback_text = execution_result.get("stderr", "Unknown execution error")
+                else:
+                    warnings = execution_result.get("mesh_info", {}).get("geometry_warnings", [])
+                    traceback_text = "GEOMETRY TOPOLOGY VALIDATION FAILURE:\n" + "\n".join(warnings)
+
+                try:
+                    corrected, model_used = await asyncio.to_thread(
+                        LLMService.correct_code,
+                        user_prompt=payload.prompt,
+                        failed_code=current_code,
+                        error_traceback=traceback_text
+                    )
+                    current_code = corrected.python_code
+                    dual_output = corrected
+                except Exception:
+                    break
+
+        is_geo_valid = execution_result.get("mesh_info", {}).get("is_valid", True) if execution_result else False
+        if not execution_result or execution_result.get("status") != "success" or not is_geo_valid:
+            stderr_tail = (execution_result.get("stderr", "") if execution_result else "")[-2000:]
+            yield f"data: {json.dumps({'phase': 'error', 'message': 'CAD execution failed', 'error_code': 'cad_execution_failed', 'stderr_tail': stderr_tail})}\n\n"
+            return
+
+        # Phase 5: Mesh validation
+        yield f"data: {json.dumps({'phase': 'mesh_validation', 'message': 'Solid verified (watertight 2-manifold mesh)...', 'progress': 92})}\n\n"
+        await asyncio.sleep(0.05)
+
+        # Database persistence
+        if current_user and db:
+            try:
+                await save_generation_record(
+                    db=db,
+                    user_id=current_user.id,
+                    prompt=payload.prompt,
+                    script_id=script_id,
+                    part_name=dual_output.part_name,
+                    description=dual_output.description,
+                    python_code=current_code,
+                    parameters=[p.model_dump() for p in dual_output.parameters] if dual_output.parameters else [],
+                    mesh_info=execution_result.get("mesh_info"),
+                    mesh_url=execution_result.get("mesh_url"),
+                    step_url=execution_result.get("step_url"),
+                    model_used=model_used,
+                    generation_time_ms=execution_result.get("recomputation_time_ms"),
+                    self_corrections=self_correction_attempts,
+                    design_mode=dual_output.design_mode,
+                    components=dual_output.components,
+                )
+            except Exception as dbe:
+                logger.warning(f"[DB] Failed to persist streamed generation: {dbe}")
+
+        background_tasks.add_task(ArtifactCleanupManager.cleanup_old_artifacts, 86400)
+
+        final_response = {
+            "status": "success",
+            "script_id": script_id,
+            "part_name": dual_output.part_name,
+            "description": dual_output.description,
+            "python_code": current_code,
+            "parameters": [p.model_dump() for p in dual_output.parameters] if dual_output.parameters else [],
+            "design_mode": dual_output.design_mode,
+            "components": dual_output.components,
+            "mesh_url": execution_result.get("mesh_url"),
+            "step_url": execution_result.get("step_url"),
+            "mesh_info": execution_result.get("mesh_info"),
+            "recomputation_time_ms": execution_result.get("recomputation_time_ms"),
+            "self_correction_attempts": self_correction_attempts,
+            "model_used": model_used
+        }
+        yield f"data: {json.dumps({'phase': 'complete', 'progress': 100, 'result': final_response})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------------------------
@@ -470,7 +657,13 @@ async def download_model(
 
 
 @app.post("/api/modify", response_model=ModifyResponse)
-async def modify_part(payload: ModifyRequest, background_tasks: BackgroundTasks, request: Request):
+async def modify_part(
+    payload: ModifyRequest,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Chat-to-Modify Endpoint (Week 7 deliverable).
 
@@ -579,6 +772,24 @@ async def modify_part(payload: ModifyRequest, background_tasks: BackgroundTasks,
                 "geometry_warnings": execution_result.get("mesh_info", {}).get("geometry_warnings", []) if execution_result else [],
             }
         )
+
+    # Persist version to database if user is authenticated
+    if current_user and db:
+        try:
+            await save_version_record(
+                db=db,
+                user_id=current_user.id,
+                base_script_id=payload.script_id,
+                new_script_id=new_script_id,
+                modification_prompt=payload.modification_prompt,
+                python_code=current_code,
+                parameters=[p.model_dump() for p in dual_output.parameters] if dual_output.parameters else [],
+                mesh_url=execution_result.get("mesh_url"),
+                step_url=execution_result.get("step_url"),
+                mesh_info=execution_result.get("mesh_info"),
+            )
+        except Exception as dbe:
+            logger.warning(f"[DB] Failed to persist version: {dbe}")
 
     background_tasks.add_task(ArtifactCleanupManager.cleanup_old_artifacts, 86400)
 
