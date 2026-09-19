@@ -75,6 +75,11 @@ Complex generation and chat-to-modify requests allow up to five minutes by defau
 ## 🌟 Key System Features
 
 - 🧊 **Real CAD Solid Engine (`build123d` + OpenCASCADE)**: Generates true boundary-representation (B-Rep) solid models with exact CSG operations, fillets, chamfers, and STEP/STL export.
+- 📦 **Multi-Format Export Suite (STEP, STL, OBJ, GLB, 3MF)**: Export production STEP boundary representations for CNC/CAM, STL for 3D slicing, Wavefront OBJ for 3D graphics, and GLTF/GLB binary for WebGL & AR.
+- 🏛️ **Public Community Gallery (`/api/gallery`, `#gallery`)**: Masonry grid of published designs with live search, engineering tag filters, sort options (recent/popular/most forked), instant fork-to-workspace, and liking.
+- 📡 **Structured JSON Telemetry & Observability (`/api/metrics`)**: In-process observability recording request counts, p95 latencies, error percentages, and model success distributions.
+- 🤖 **CI/CD Automated Pipelines (`.github/workflows/`)**: Automated GitHub Actions running pytest regression test suites, Vite bundle builds on every PR/push, and scheduled benchmark regression guards.
+- 🧩 **Modular Component Architecture & State Machine**: Scalable `useCADWorkbench` reducer hook managing workspace state, with isolated components (`ViewportToolbar`, `PromptPanel`, `TelemetryHUD`, `ErrorBanner`, `ChatModifyPanel`, `CodeInspectorModal`).
 - 🧠 **101-Example RAG Vector Store**: Uses local `sentence-transformers/all-MiniLM-L6-v2` embeddings in ChromaDB to retrieve top-3 CAD code examples for few-shot LLM prompt injection across multiple engineering domains.
 - ⚡ **Real-Time SSE Generation Pipeline (`POST /api/generate/stream`)**: Server-Sent Events stream live progress across 5 discrete pipeline stages (Blueprint Retrieval → Parametric Synthesis → AST Audit → Kernel Compilation → Topology Check) with sub-second feedback.
 - 💬 **Chat-to-Modify (`POST /api/modify`)**: Conversationally refine generated models with natural language (e.g., *"Make the walls 2mm thicker"*, *"Add 4x M3 mounting holes"*) without losing parameter continuity. Creates versioned scripts (`_v1`, `_v2`...).
@@ -107,40 +112,46 @@ Complex generation and chat-to-modify requests allow up to five minutes by defau
 ai-parametric-cad-workbench/
 ├── README.md                 ← Project Documentation & Setup Guide
 ├── WEEKLY_PLAN.md            ← Master Plan & Milestone Roadmap
+├── .github/workflows/
+│   ├── ci.yml                ← Pytest Backend Suite & Vite Frontend Bundle CI
+│   └── benchmark.yml         ← Weekly Automated 20-Prompt Benchmark Regression Guard
 ├── scripts/
 │   └── clean_artifacts.py    ← Standalone CAD Artifact Lifecycle Maintenance
 ├── backend/
 │   ├── main.py               ← FastAPI Application, Route Handlers, SSE Streaming (/generate/stream)
 │   ├── database.py           ← Async SQLAlchemy Engine & Session Lifecycle (SQLite/PostgreSQL)
-│   ├── schemas.py            ← Pydantic V2 API Schemas with String Length Bounds (CADParameter, DualOutputPayload)
+│   ├── schemas.py            ← Pydantic V2 API Schemas with String Length Bounds
 │   ├── config.py             ← Isolated Directory Configuration & DLL Search Paths
 │   ├── startup_check.py      ← Pre-flight Dependency & Vector Index Sanity Check
 │   ├── benchmark_eval.py     ← Benchmark Runner & Telemetry Suite (httpx-based)
 │   ├── run_tests.py          ← Cross-Platform Unified Pytest Runner
 │   ├── pytest.ini            ← Pytest Test Runner Configuration
 │   ├── requirements.txt      ← Python Dependencies (build123d, chromadb, fastapi, sqlalchemy, bcrypt, etc.)
+│   ├── middleware/
+│   │   └── telemetry.py      ← Structured JSON Request Telemetry & In-Memory Metrics Store
 │   ├── models/
 │   │   ├── __init__.py       ← Central Declarative Base & Table Registry
 │   │   ├── user.py           ← User Model (Credentials, Tiers, API Keys)
 │   │   └── project.py        ← Workspaces, Generations, & Version History Models
 │   ├── routes/
 │   │   ├── auth.py           ← User Registration, Login, Token Refresh, & Profile
-│   │   └── projects.py       ← Workspace & Design Persistence CRUD Endpoints
+│   │   ├── projects.py       ← Workspace & Design Persistence CRUD Endpoints
+│   │   └── gallery.py        ← Public Design Gallery, Publish, Like, & Fork Endpoints
 │   ├── services/
 │   │   ├── auth_service.py   ← JWT Creation/Verification & Native Bcrypt Password Hashing
-│   │   ├── cad_runner.py     ← Subprocess Executor, AST Security Sandbox, Stripped Env Vars, & Mesh Inspector
+│   │   ├── cad_runner.py     ← Subprocess Executor, AST Sandbox, Multiformat Export (STL, STEP, OBJ, GLB)
 │   │   ├── prompts.py        ← 15 Strict CAD Code Rules, System Prompts, & RAG Templates
 │   │   ├── rag_service.py    ← ChromaDB Indexing, SentenceTransformers Embedding, & Retrieval
 │   │   ├── llm_service.py    ← Gemini API, Gemini Web, and Groq Fallback Chain & Self-Correction
 │   │   ├── gemini_web_client.py ← In-Process Gemini Web StreamGenerate Client
 │   │   └── cleanup.py        ← Temporary CAD Artifact Lifecycle Manager
+│   ├── test_api.py           ← Integration Tests for All Routes
 │   ├── test_auth_projects.py ← Multi-Tenant Auth & Workspace Isolation Integration Tests
-│   ├── test_schemas.py       ← Pydantic Schema Range & Type Constraints Test Suite
+│   ├── test_gallery_and_formats.py ← Public Gallery, Telemetry Metrics, & Multi-Format Tests
 │   ├── test_ast_security.py  ← AST Sandbox Security Test Suite (7 tests)
-│   ├── test_llm_parser.py    ← Robust JSON/AST Parser & Regex Fallback Test Suite
-│   ├── test_modify_params.py ← Chat-to-Modify Schema & Contract Test Suite
 │   ├── test_geometry_validation.py ← Topology & Watertightness Verification Test Suite
 │   ├── test_recompute_validation.py ← Fast Slider Recomputation Contract Test Suite
+│   ├── test_modify_params.py ← Chat-to-Modify Schema & Contract Test Suite
 │   └── rag_corpus/
 │       ├── examples_week4.py ← Basic CAD Snippets (plates, brackets, tubes)
 │       ├── examples_week5.py ← Mechanical CAD Snippets (couplings, pulleys, gears)
@@ -152,21 +163,30 @@ ai-parametric-cad-workbench/
     ├── vite.config.js        ← Vite Config with Backend Proxy & Vendor Chunk Splitting
     ├── package.json          ← Frontend Dependencies (@react-three/fiber, drei, three, axios)
     └── src/
-        ├── Router.jsx        ← Client-Side Hash Router with React.lazy Code Splitting
+        ├── Router.jsx        ← Client-Side Hash Router with React.lazy Code Splitting (#app, #gallery)
         ├── LandingPage.jsx   ← Interactive Atelier Engineering Landing Page with 3D Showcase & Memberships
-        ├── App.jsx           ← CAD Workbench Studio Shell, Chat-to-Modify Panel, & State Management
+        ├── App.jsx           ← CAD Workbench Studio Shell
         ├── index.css         ← Parisian Atelier Luxury Design System (Espresso, Buttercream, Warm Sand)
         ├── api.js            ← Axios Client with SSE Streaming Reader, Auth Interceptors, & Timeouts
+        ├── pages/
+        │   └── Gallery.jsx   ← Public CAD Community Gallery (Masonry Grid, Search, Tag Filters, Forking)
         ├── hooks/
-        │   └── useAuth.js    ← Reactive Authentication & Workspace Session Hook
+        │   ├── useAuth.js         ← Reactive Authentication & Workspace Session Hook
+        │   └── useCADWorkbench.js ← Scalable Workbench Reducer State Machine (30+ States Centralized)
         └── components/
             ├── Viewer3D.jsx           ← React Three Fiber WebGL Viewer (PBR Presets, Dimension Annotations)
+            ├── ViewportToolbar.jsx    ← Floating 3D Controls (Visual Style, Camera Angle, Material, Formats)
+            ├── PromptPanel.jsx        ← Natural Language Prompt Input with Quick Launch Presets
+            ├── TelemetryHUD.jsx       ← B-Rep Envelope, Volume, and Watertight Manifold Metrics
+            ├── ChatModifyPanel.jsx    ← Conversational CAD Delta Refinement Panel
+            ├── CodeInspectorModal.jsx ← Python CAD Script Inspector & Clipboard Copier
+            ├── ErrorBanner.jsx        ← Unified Dismissible Error Notification Bar
             ├── ParameterSlider.jsx    ← Parametric Slider Control with Unit Detection & Steppers
             ├── AuthModal.jsx          ← Studio Sign-In & Registration Modal
             ├── GenerationProgress.jsx ← 5-Stage Real-Time Pipeline Progress Visualizer Card
             ├── ProjectSidebar.jsx     ← Workspace Slide-Out Drawer with Saved CAD Design Trees
             ├── OnboardingTour.jsx     ← 5-Step Guided Spotlight Walkthrough
-            └── ShareModal.jsx         ← Public Permalinks & Responsive Embed Snippets
+            └── ShareModal.jsx         ← Public Permalinks, 3D Embeds, & Publish to Gallery Modal
 ```
 
 ---
@@ -176,10 +196,15 @@ ai-parametric-cad-workbench/
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/health` | Service health status, storage readiness, & LLM configuration |
-| `POST` | `/api/generate` | **Primary:** NL prompt → RAG (101 examples) → LLM → execute → 3D STL + STEP *(Rate limited)* |
+| `GET` | `/api/metrics` | **Telemetry & Observability:** Real-time request counts, error rates, p95 latencies |
+| `POST` | `/api/generate` | **Primary:** NL prompt → RAG (101 examples) → LLM → execute → 3D solid *(Rate limited)* |
 | `POST` | `/api/generate/stream` | **Real-Time Streaming:** Server-Sent Events (SSE) streaming 5-stage synthesis pipeline |
 | `POST` | `/api/modify` | **Chat-to-Modify:** Refine existing script via natural language prompt *(Rate limited)* |
 | `POST` | `/api/recompute` | Fast parametric slider recomputation (sub-200ms, no LLM call) *(Rate limited)* |
+| `GET` | `/api/gallery` | **Public Gallery:** Paginated community designs with search, tag filters, & sorting |
+| `POST` | `/api/gallery/{id}/publish` | Publish private design to the public community gallery |
+| `POST` | `/api/gallery/{id}/like` | Increment community like count on a public design |
+| `POST` | `/api/gallery/{id}/fork` | Fork public community design directly into personal private workspace |
 | `POST` | `/api/auth/register` | Register new CAD Atelier user account (bcrypt password hashing) |
 | `POST` | `/api/auth/login` | Authenticate user & issue JWT Bearer access token |
 | `POST` | `/api/auth/refresh` | Refresh expired JWT session token |
@@ -192,10 +217,10 @@ ai-parametric-cad-workbench/
 | `GET` | `/api/script/{id}` | Retrieve raw generated `build123d` Python script by ID *(Requires admin token in production)* |
 | `GET` | `/api/admin/models` | List all stored 3D STL/STEP model artifacts *(Requires admin token)* |
 | `POST` | `/api/admin/cleanup` | Remove temporary artifacts older than threshold *(Requires admin token)* |
-| `GET` | `/api/download/{id}/{fmt}` | Direct attachment download for STL or STEP files (`fmt=stl\|step\|stp`) |
-| `GET` | `/static/models/{file}` | Serve generated STL preview and STEP export files *(Python source requires admin token)* |
+| `GET` | `/api/download/{id}/{fmt}` | Direct attachment download (`fmt=stl\|step\|stp\|obj\|glb`) |
+| `GET` | `/static/models/{file}` | Serve generated STL, STEP, OBJ, and GLB files *(Python source requires admin token)* |
 
-The admin cleanup, model listing, and source-code routes accept the `X-Admin-Token` header when `ADMIN_TOKEN` is configured. Production mode (`ENVIRONMENT=production`) refuses to start protected operations without that token. STL/STEP downloads and previews remain public for browser rendering; generated Python source strictly requires the admin token. The AST validator and stripped environment variables (`PYTHONNOUSERSITE=1`, `PYTHONPATH=""`) form a layered defense; production deployments should use container boundaries and restricted network access.
+The admin cleanup, model listing, and source-code routes accept the `X-Admin-Token` header when `ADMIN_TOKEN` is configured. Production mode (`ENVIRONMENT=production`) refuses to start protected operations without that token. STL/STEP/OBJ/GLB downloads and previews remain public for browser rendering; generated Python source strictly requires the admin token. The AST validator and stripped environment variables (`PYTHONNOUSERSITE=1`, `PYTHONPATH=""`) form a layered defense; production deployments should use container boundaries and restricted network access.
 
 ---
 

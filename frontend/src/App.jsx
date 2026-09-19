@@ -19,7 +19,14 @@ import ProjectSidebar from './components/ProjectSidebar';
 import GenerationProgress from './components/GenerationProgress';
 import OnboardingTour from './components/OnboardingTour';
 import ShareModal from './components/ShareModal';
+import ErrorBanner from './components/ErrorBanner';
+import TelemetryHUD from './components/TelemetryHUD';
+import ViewportToolbar from './components/ViewportToolbar';
+import PromptPanel from './components/PromptPanel';
+import ChatModifyPanel from './components/ChatModifyPanel';
+import CodeInspectorModal from './components/CodeInspectorModal';
 import { useAuth } from './hooks/useAuth';
+import { useCADWorkbench } from './hooks/useCADWorkbench';
 import {
   generatePart,
   generatePartStream,
@@ -35,16 +42,6 @@ import { VISUAL_STYLES, VIEWPORT_BACKGROUNDS } from './constants/visualStyles';
 const fileUrl = (path) => {
   return resolveAssetUrl(path);
 };
-
-/** Read the last generated model from localStorage (once at module load). */
-function getPersistedModel() {
-  try {
-    return JSON.parse(localStorage.getItem('cad_last_model') || 'null') || {};
-  } catch {
-    return {};
-  }
-}
-const _p = getPersistedModel();
 
 // Categorized Preset CAD Prompts
 const PRESET_CATEGORIES = [
@@ -90,77 +87,99 @@ const QUICK_MODIFICATIONS = [
   'Increase overall length by 20mm'
 ];
 
-export default function App({ onGoHome }) {
-  const [prompt, setPrompt] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [recomputing, setRecomputing] = useState(false);
-  const [error, setError] = useState(null);
+export default function App({ onGoHome, onGoToGallery }) {
+  const {
+    state,
+    paramValuesRef,
+    setField,
+    setError,
+    dismissError,
+    applyPartResponse,
+    setRecomputeSuccess,
+    resetParams,
+    pushSnapshot,
+    popSnapshot,
+    setPrompt,
+    setActiveTab,
+    setParameterSearch,
+    setModifyPrompt,
+    setModifying,
+    setLoading,
+    setRecomputing,
+    setVisualStyle,
+    setMaterialType,
+    setBackgroundTheme,
+    setShowAxes,
+    setShowGrid,
+    setShowDimensions,
+    setCursorCoords,
+    setActiveCamView,
+    setShowCodeModal,
+    setShowAuthModal,
+    setShowProjectSidebar,
+    setShowShareModal,
+    setShowOnboarding,
+    setBackendStatus,
+    setChatHistory,
+    updateParamValue,
+    updateStream,
+  } = useCADWorkbench();
 
-  // Response state from /api/generate & /api/modify — restored from localStorage
-  const [scriptId, setScriptId] = useState(_p.scriptId ?? null);
-  const [partName, setPartName] = useState(_p.partName ?? null);
-  const [description, setDescription] = useState(_p.description ?? null);
-  const [pythonCode, setPythonCode] = useState(_p.pythonCode ?? null);
-  const [parameters, setParameters] = useState(_p.parameters ?? []);
-  const [parameterSearch, setParameterSearch] = useState('');
-  const [paramValues, setParamValues] = useState(_p.paramValues ?? {});
-  const [meshUrl, setMeshUrl] = useState(_p.meshUrl ?? null);
-  const [stepUrl, setStepUrl] = useState(_p.stepUrl ?? null);
-  const [meshInfo, setMeshInfo] = useState(_p.meshInfo ?? null);
-  const [recompTime, setRecompTime] = useState(null);
-  const [modelUsed, setModelUsed] = useState(null);
-  const [designMode, setDesignMode] = useState(_p.designMode ?? 'single_solid');
-  const [components, setComponents] = useState(_p.components ?? null);
-  const [backendStatus, setBackendStatus] = useState('checking');
+  const {
+    prompt,
+    loading,
+    recomputing,
+    error,
+    scriptId,
+    partName,
+    description,
+    pythonCode,
+    parameters,
+    parameterSearch,
+    paramValues,
+    meshUrl,
+    stepUrl,
+    objUrl,
+    glbUrl,
+    meshInfo,
+    recompTime,
+    modelUsed,
+    designMode,
+    components,
+    backendStatus,
+    activeTab,
+    chatHistory,
+    modifyPrompt,
+    modifying,
+    modelHistory,
+    showAxes,
+    showGrid,
+    materialType,
+    visualStyle,
+    backgroundTheme,
+    cursorCoords,
+    activeCamView,
+    showDimensions,
+    showCodeModal,
+    showAuthModal,
+    showProjectSidebar,
+    showShareModal,
+    showOnboarding,
+    streamPhase,
+    streamProgress,
+    streamMessage,
+    streamAttempts,
+  } = state;
 
-  // Viewport Control States (AutoCAD Engine)
-  const [showAxes, setShowAxes] = useState(true);
-  const [showGrid, setShowGrid] = useState(true);
-  const [materialType, setMaterialType] = useState('cad_gray');
-  const [visualStyle, setVisualStyle] = useState('shaded_edges');
-  const [backgroundTheme, setBackgroundTheme] = useState('atelier_sand');
-  const [cursorCoords, setCursorCoords] = useState({ x: '0.0', y: '0.0', z: '0.0' });
-  const [activeCamView, setActiveCamView] = useState('iso');
-  const [showCodeModal, setShowCodeModal] = useState(false);
   const viewerRef = useRef(null);
-
-  // Chat-to-Modify state
-  const [chatHistory, setChatHistory] = useState([]);
-  const [modifyPrompt, setModifyPrompt] = useState('');
-  const [modifying, setModifying] = useState(false);
   const chatEndRef = useRef(null);
-
-  // Model undo history — stores last 5 snapshots for undo
-  const [modelHistory, setModelHistory] = useState([]);
-  const [showDimensions, setShowDimensions] = useState(true);
-
-  // Auth & Project Workspace State
   const { user, isAuthenticated, login, register, logout } = useAuth();
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [showProjectSidebar, setShowProjectSidebar] = useState(false);
-
-  // SSE Stream state
-  const [streamPhase, setStreamPhase] = useState('rag_retrieval');
-  const [streamProgress, setStreamProgress] = useState(0);
-  const [streamMessage, setStreamMessage] = useState('');
-  const [streamAttempts, setStreamAttempts] = useState(0);
-
-  // Guided Onboarding & Sharing States
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const [showShareModal, setShowShareModal] = useState(false);
-
-  // Sidebar collapse
   const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  // Viewport dropdown state — which dropdown is open ('style'|'view'|'material'|'export'|null)
   const [openDropdown, setOpenDropdown] = useState(null);
   const dropdownRef = useRef(null);
-
-  // Debounce timer for slider recomputation
   const debounceTimerRef = useRef(null);
   const scrollTimerRef = useRef(null);
   const recomputeSequenceRef = useRef(0);
-  const paramValuesRef = useRef(_p.paramValues ?? {});
 
   // Health check on mount + debounce timer cleanup
   useEffect(() => {
@@ -172,7 +191,7 @@ export default function App({ onGoHome }) {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
     };
-  }, []);
+  }, [setBackendStatus]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -195,57 +214,7 @@ export default function App({ onGoHome }) {
     };
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [showCodeModal]);
-
-  // Sidebar active tab ('sliders' | 'chat' | 'prompt' | 'all')
-  const [activeTab, setActiveTab] = useState('all');
-
-  // Apply response from generate or modify + persist to localStorage
-  const applyPartResponse = (res) => {
-    recomputeSequenceRef.current += 1;
-    const initialValues = {};
-    (res.parameters || []).forEach((p) => { initialValues[p.name] = p.default; });
-
-    setScriptId(res.script_id);
-    setPartName(res.part_name);
-    setDescription(res.description);
-    setPythonCode(res.python_code);
-    setParameters(res.parameters || []);
-    setParameterSearch('');
-    setMeshUrl(res.mesh_url);
-    setStepUrl(res.step_url);
-    setMeshInfo(res.mesh_info || {});
-    setRecompTime(res.recomputation_time_ms);
-    setModelUsed(res.model_used);
-    setDesignMode(res.design_mode || 'single_solid');
-    setComponents(res.components || null);
-    paramValuesRef.current = initialValues;
-    setParamValues(initialValues);
-
-    // Persist model state so page refresh restores the last model
-    try {
-      localStorage.setItem('cad_last_model', JSON.stringify({
-        scriptId: res.script_id,
-        partName: res.part_name,
-        description: res.description,
-        pythonCode: res.python_code,
-        parameters: res.parameters || [],
-        paramValues: initialValues,
-        meshUrl: res.mesh_url,
-        stepUrl: res.step_url,
-        meshInfo: res.mesh_info || {},
-        designMode: res.design_mode || 'single_solid',
-        components: res.components || null,
-      }));
-    } catch (e) {
-      console.warn('[Persist] Could not save model to localStorage:', e);
-    }
-
-    // Switch to sliders view if parameters are present so they have 100% space
-    if (res.parameters && res.parameters.length > 0) {
-      setActiveTab('sliders');
-    }
-  };
+  }, [showCodeModal, setShowCodeModal]);
 
   // Submit prompt -> /api/generate/stream with fallback to /api/generate
   const handleGenerate = async (overridePrompt) => {
@@ -255,19 +224,21 @@ export default function App({ onGoHome }) {
     setLoading(true);
     setError(null);
     setChatHistory([]);
-    setStreamPhase('rag_retrieval');
-    setStreamProgress(12);
-    setStreamMessage('Vector search across 101 CAD blueprints...');
-    setStreamAttempts(0);
+    updateStream({
+      phase: 'rag_retrieval',
+      progress: 12,
+      message: 'Vector search across 101 CAD blueprints...',
+      attempts: 0,
+    });
 
     try {
       const res = await generatePartStream(activePrompt, (evt) => {
-        if (evt.phase) setStreamPhase(evt.phase);
-        if (typeof evt.progress === 'number') setStreamProgress(evt.progress);
-        if (evt.message) setStreamMessage(evt.message);
-        if (evt.phase === 'self_correction') {
-          setStreamAttempts((a) => a + 1);
-        }
+        updateStream({
+          phase: evt.phase,
+          progress: evt.progress,
+          message: evt.message,
+          attempts: evt.phase === 'self_correction' ? (streamAttempts + 1) : streamAttempts,
+        });
       });
       applyPartResponse(res);
     } catch (streamErr) {
@@ -289,9 +260,11 @@ export default function App({ onGoHome }) {
   const handleSelectGeneration = async (genId) => {
     try {
       setLoading(true);
-      setStreamPhase('cad_execution');
-      setStreamProgress(60);
-      setStreamMessage('Restoring saved workspace design...');
+      updateStream({
+        phase: 'cad_execution',
+        progress: 60,
+        message: 'Restoring saved workspace design...',
+      });
       const gen = await getGenerationDetail(genId);
       applyPartResponse({
         script_id: gen.script_id,
@@ -301,6 +274,8 @@ export default function App({ onGoHome }) {
         parameters: gen.parameters || [],
         mesh_url: gen.mesh_url,
         step_url: gen.step_url,
+        obj_url: gen.obj_url,
+        glb_url: gen.glb_url,
         mesh_info: gen.mesh_info || {},
         recomputation_time_ms: gen.generation_time_ms,
         model_used: gen.model_used,
@@ -316,50 +291,6 @@ export default function App({ onGoHome }) {
     }
   };
 
-  // Capture snapshot for undo stack
-  const saveSnapshot = () => {
-    if (!scriptId || !pythonCode) return;
-    setModelHistory((prev) => [
-      {
-        scriptId,
-        partName,
-        description,
-        pythonCode,
-        parameters: [...parameters],
-        paramValues: { ...paramValues },
-        meshUrl,
-        stepUrl,
-        meshInfo,
-        recompTime,
-        modelUsed,
-        designMode,
-        components,
-      },
-      ...prev,
-    ].slice(0, 5));
-  };
-
-  // Undo to previous model state
-  const handleUndo = () => {
-    if (modelHistory.length === 0) return;
-    const [lastState, ...remaining] = modelHistory;
-    setModelHistory(remaining);
-    setScriptId(lastState.scriptId);
-    setPartName(lastState.partName);
-    setDescription(lastState.description);
-    setPythonCode(lastState.pythonCode);
-    setParameters(lastState.parameters || []);
-    paramValuesRef.current = lastState.paramValues || {};
-    setParamValues(paramValuesRef.current);
-    setMeshUrl(lastState.meshUrl);
-    setStepUrl(lastState.stepUrl);
-    setMeshInfo(lastState.meshInfo || {});
-    setRecompTime(lastState.recompTime);
-    setModelUsed(lastState.modelUsed);
-    setDesignMode(lastState.designMode || 'single_solid');
-    setComponents(lastState.components || null);
-  };
-
   // Chat-to-Modify -> /api/modify
   const handleModify = async (overrideMsg) => {
     const msg = (overrideMsg || modifyPrompt).trim();
@@ -371,7 +302,7 @@ export default function App({ onGoHome }) {
     setChatHistory((prev) => [...prev, { role: 'user', text: msg }]);
 
     try {
-      saveSnapshot();
+      pushSnapshot();
       const res = await modifyPart(
         scriptId,
         pythonCode,
@@ -410,7 +341,7 @@ export default function App({ onGoHome }) {
   const handleParamChange = useCallback((name, value) => {
     const requestSequence = ++recomputeSequenceRef.current;
     paramValuesRef.current = { ...paramValuesRef.current, [name]: value };
-    setParamValues(paramValuesRef.current);
+    updateParamValue(name, value);
 
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
 
@@ -428,11 +359,7 @@ export default function App({ onGoHome }) {
           components,
         );
         if (requestSequence !== recomputeSequenceRef.current) return;
-        setMeshUrl(res.mesh_url);
-        setStepUrl(res.step_url);
-        setMeshInfo(res.mesh_info || {});
-        setRecompTime(res.recomputation_time_ms);
-        setError(null);
+        setRecomputeSuccess(res);
       } catch (err) {
         if (requestSequence !== recomputeSequenceRef.current) return;
         console.error('[Recompute error]', err);
@@ -443,7 +370,7 @@ export default function App({ onGoHome }) {
         if (requestSequence === recomputeSequenceRef.current) setRecomputing(false);
       }
     }, 120);
-  }, [parameters, scriptId, pythonCode, designMode, components]);
+  }, [parameters, scriptId, pythonCode, designMode, components, setRecomputing, setRecomputeSuccess, setError, updateParamValue]);
 
   // Reset all sliders to defaults AND trigger recompute on canvas
   const handleResetAll = async () => {
@@ -453,7 +380,7 @@ export default function App({ onGoHome }) {
     const requestSequence = ++recomputeSequenceRef.current;
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     paramValuesRef.current = resetVals;
-    setParamValues(resetVals);
+    resetParams();
     setRecomputing(true);
     try {
       const res = await recomputePart(
@@ -465,11 +392,7 @@ export default function App({ onGoHome }) {
         components,
       );
       if (requestSequence !== recomputeSequenceRef.current) return;
-      setMeshUrl(res.mesh_url);
-      setStepUrl(res.step_url);
-      setMeshInfo(res.mesh_info || {});
-      setRecompTime(res.recomputation_time_ms);
-      setError(null);
+      setRecomputeSuccess(res);
     } catch (err) {
       if (requestSequence !== recomputeSequenceRef.current) return;
       console.error('[Reset error]', err);
@@ -506,191 +429,32 @@ export default function App({ onGoHome }) {
         </div>
 
         {/* ── NAVBAR CAD OPTIONS DROPDOWNS ── */}
-        <div className="header-nav-dropdowns" ref={dropdownRef}>
-          {/* Visual Style Dropdown */}
-          <div className="vt-dropdown">
-            <button
-              type="button"
-              className={`vt-dropdown-trigger ${openDropdown === 'style' ? 'open' : ''}`}
-              onClick={() => toggleDropdown('style')}
-              title="Change Visual Rendering Style"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 2a10 10 0 0 0 0 20z" fill="currentColor"/>
-              </svg>
-              <span>{VISUAL_STYLES[visualStyle]?.shortName || 'Style'}</span>
-              <span className="chevron">▼</span>
-            </button>
-            {openDropdown === 'style' && (
-              <div className="vt-dropdown-menu">
-                <div className="vt-dropdown-label">Visual Style</div>
-                {Object.entries(VISUAL_STYLES).map(([key, s]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    className={`vt-dropdown-item ${visualStyle === key ? 'active' : ''}`}
-                    onClick={() => { setVisualStyle(key); setOpenDropdown(null); }}
-                  >
-                    <span className="item-dot" />
-                    <span>{s.name}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Camera View Dropdown */}
-          <div className="vt-dropdown">
-            <button
-              type="button"
-              className={`vt-dropdown-trigger ${openDropdown === 'view' ? 'open' : ''}`}
-              onClick={() => toggleDropdown('view')}
-              title="Select Camera Orientation"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                <circle cx="12" cy="13" r="4"/>
-              </svg>
-              <span>{activeCamView === 'iso' ? 'Isometric' : activeCamView.toUpperCase()}</span>
-              <span className="chevron">▼</span>
-            </button>
-            {openDropdown === 'view' && (
-              <div className="vt-dropdown-menu">
-                <div className="vt-dropdown-label">Camera View</div>
-                {[['iso','SE Isometric'],['top','Top View (Z+)'],['front','Front View (Y-)'],['side','Side View (X+)']].map(([v, label]) => (
-                  <button
-                    key={v}
-                    type="button"
-                    className={`vt-dropdown-item ${activeCamView === v ? 'active' : ''}`}
-                    onClick={() => { handleCameraPreset(v); setOpenDropdown(null); }}
-                  >
-                    <span className="item-dot" />
-                    <span>{label}</span>
-                  </button>
-                ))}
-                <div className="vt-dropdown-sep" />
-                <button
-                  type="button"
-                  className="vt-dropdown-item"
-                  onClick={() => { viewerRef.current?.resetView(); setOpenDropdown(null); }}
-                >
-                  <span className="item-dot" />
-                  <span>Fit to View</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Surface Finish / Material Dropdown */}
-          <div className="vt-dropdown">
-            <button
-              type="button"
-              className={`vt-dropdown-trigger ${openDropdown === 'material' ? 'open' : ''}`}
-              onClick={() => toggleDropdown('material')}
-              title="Change Material Finish & Canvas"
-            >
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: MATERIAL_PRESETS[materialType]?.swatch || '#CBD5E1', display: 'inline-block' }} />
-              <span>{MATERIAL_PRESETS[materialType]?.name || 'Finish'}</span>
-              <span className="chevron">▼</span>
-            </button>
-            {openDropdown === 'material' && (
-              <div className="vt-dropdown-menu">
-                <div className="vt-dropdown-label">Surface Material</div>
-                {Object.entries(MATERIAL_PRESETS).map(([key, mat]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    className={`vt-dropdown-item ${materialType === key ? 'active' : ''}`}
-                    onClick={() => { setMaterialType(key); setOpenDropdown(null); }}
-                  >
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: mat.swatch, flexShrink: 0, display: 'inline-block' }} />
-                    <span>{mat.name}</span>
-                  </button>
-                ))}
-                <div className="vt-dropdown-sep" />
-                <div className="vt-dropdown-label">Canvas Environment</div>
-                {Object.entries(VIEWPORT_BACKGROUNDS).map(([key, bg]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    className={`vt-dropdown-item ${backgroundTheme === key ? 'active' : ''}`}
-                    onClick={() => { setBackgroundTheme(key); setOpenDropdown(null); }}
-                  >
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: `linear-gradient(135deg,${bg.topColor},${bg.bottomColor})`, flexShrink: 0, display: 'inline-block' }} />
-                    <span>{bg.name}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Export Dropdown */}
-          <div className="vt-dropdown">
-            <button
-              type="button"
-              className={`vt-dropdown-trigger ${openDropdown === 'export' ? 'open' : ''}`}
-              onClick={() => toggleDropdown('export')}
-              title={meshUrl || stepUrl ? "Download 3D CAD Files" : "Generate a model first to export"}
-              style={{ opacity: (meshUrl || stepUrl || pythonCode) ? 1 : 0.65 }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              <span>Export</span>
-              <span className="chevron">▼</span>
-            </button>
-            {openDropdown === 'export' && (
-              <div className="vt-dropdown-menu">
-                <div className="vt-dropdown-label">Download Assets</div>
-                {meshUrl ? (
-                  <a
-                    href={fileUrl(meshUrl)}
-                    download={`${partName || 'part'}.stl`}
-                    className="vt-dropdown-item"
-                    onClick={() => setOpenDropdown(null)}
-                  >
-                    <span className="item-dot active" />
-                    <span>STL Mesh (.stl)</span>
-                  </a>
-                ) : (
-                  <div className="vt-dropdown-item" style={{ opacity: 0.5, cursor: 'not-allowed' }}>
-                    <span className="item-dot" />
-                    <span>STL Mesh (Generate First)</span>
-                  </div>
-                )}
-                {stepUrl ? (
-                  <a
-                    href={fileUrl(stepUrl)}
-                    download={`${partName || 'part'}.step`}
-                    className="vt-dropdown-item"
-                    onClick={() => setOpenDropdown(null)}
-                  >
-                    <span className="item-dot active" />
-                    <span>STEP B-Rep (.step)</span>
-                  </a>
-                ) : (
-                  <div className="vt-dropdown-item" style={{ opacity: 0.5, cursor: 'not-allowed' }}>
-                    <span className="item-dot" />
-                    <span>STEP B-Rep (Generate First)</span>
-                  </div>
-                )}
-                {pythonCode && (
-                  <button
-                    type="button"
-                    className="vt-dropdown-item"
-                    onClick={() => { setShowCodeModal(true); setOpenDropdown(null); }}
-                  >
-                    <span className="item-dot active" />
-                    <span>Python CAD Script (.py)</span>
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+        <ViewportToolbar
+          visualStyle={visualStyle}
+          setVisualStyle={setVisualStyle}
+          VISUAL_STYLES={VISUAL_STYLES}
+          activeCamView={activeCamView}
+          handleCameraPreset={handleCameraPreset}
+          viewerRef={viewerRef}
+          materialType={materialType}
+          setMaterialType={setMaterialType}
+          MATERIAL_PRESETS={MATERIAL_PRESETS}
+          backgroundTheme={backgroundTheme}
+          setBackgroundTheme={setBackgroundTheme}
+          VIEWPORT_BACKGROUNDS={VIEWPORT_BACKGROUNDS}
+          meshUrl={meshUrl}
+          stepUrl={stepUrl}
+          objUrl={objUrl}
+          glbUrl={glbUrl}
+          pythonCode={pythonCode}
+          partName={partName}
+          openDropdown={openDropdown}
+          setOpenDropdown={setOpenDropdown}
+          toggleDropdown={toggleDropdown}
+          fileUrl={fileUrl}
+          setShowCodeModal={setShowCodeModal}
+          toolbarRef={dropdownRef}
+        />
 
         <div className="header-actions">
           <button
@@ -706,7 +470,7 @@ export default function App({ onGoHome }) {
           {modelHistory.length > 0 && (
             <button
               className="toolbar-btn header-action-btn"
-              onClick={handleUndo}
+              onClick={popSnapshot}
               title={`Undo to previous model state (${modelHistory.length} in stack)`}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
@@ -881,73 +645,13 @@ export default function App({ onGoHome }) {
 
         {/* Prompt Input Section */}
         {(activeTab === 'all' || activeTab === 'prompt' || !scriptId) && (
-          <div className="sidebar-section bento-card">
-            <div className="section-header">
-              <span className="section-title">Natural Language Prompt</span>
-              <span className="section-tag">RAG + LLM</span>
-            </div>
-
-            <div className="prompt-area">
-              <textarea
-                id="prompt-input"
-                aria-label="Natural language CAD prompt"
-                className="prompt-textarea"
-                placeholder="e.g. A mounting plate 100x60x5mm with four M4 corner clearance holes and 5mm edge fillets..."
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                    e.preventDefault();
-                    if (!loading && prompt.trim()) handleGenerate();
-                  }
-                }}
-              />
-
-              <button
-                id="btn-generate"
-                className="generate-btn"
-                onClick={() => handleGenerate()}
-                disabled={loading || !prompt.trim()}
-              >
-                {loading ? (
-                  <>
-                    <div className="spinner" />
-                    <span>RAG Synthesizing Solid...</span>
-                  </>
-                ) : (
-                  <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                    </svg>
-                    <span>Generate Parametric 3D Solid</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            {/* Categorized Quick Presets */}
-            <div className="presets-container">
-              <div className="preset-tabs-label">Quick Launch Presets:</div>
-              <div className="preset-pills-list">
-                {PRESET_CATEGORIES.map((cat) =>
-                  cat.prompts.map((item, idx) => (
-                    <button
-                      key={`${cat.category}-${idx}`}
-                      className="preset-chip"
-                      onClick={() => {
-                        setPrompt(item.prompt);
-                        handleGenerate(item.prompt);
-                      }}
-                      title={item.prompt}
-                    >
-                      <span className="preset-chip-dot" />
-                      <span>{item.label}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+          <PromptPanel
+            prompt={prompt}
+            setPrompt={setPrompt}
+            loading={loading}
+            handleGenerate={handleGenerate}
+            PRESET_CATEGORIES={PRESET_CATEGORIES}
+          />
         )}
 
         {/* Parametric Sliders Section */}
@@ -997,23 +701,12 @@ export default function App({ onGoHome }) {
               </div>
             ) : (
               <>
-                {meshInfo && meshInfo.dimensions_mm && (
-                  <div className="sidebar-metrics-bar">
-                    <span className="sidebar-metric-chip">
-                      {meshInfo.dimensions_mm.x} × {meshInfo.dimensions_mm.y} × {meshInfo.dimensions_mm.z} mm
-                    </span>
-                    {meshInfo.volume_mm3 && (
-                      <span className="sidebar-metric-chip">
-                        · {(meshInfo.volume_mm3 / 1000).toFixed(1)} cm³
-                      </span>
-                    )}
-                    {meshInfo.is_watertight !== undefined && (
-                      <span className="sidebar-metric-chip" style={{ color: meshInfo.is_watertight ? '#10B981' : '#EF4444' }}>
-                        · {meshInfo.is_watertight ? 'Watertight' : 'Non-Manifold'}
-                      </span>
-                    )}
-                  </div>
-                )}
+                <TelemetryHUD
+                  meshInfo={meshInfo}
+                  recompTime={recompTime}
+                  modelUsed={modelUsed}
+                  designMode={designMode}
+                />
                 <div className="parameter-search-row">
                   <input
                     className="parameter-search-input"
@@ -1071,83 +764,17 @@ export default function App({ onGoHome }) {
         )}
 
         {/* Chat-to-Modify Section */}
-        {scriptId && (activeTab === 'all' || activeTab === 'chat') && (
-          <div className={`chat-panel bento-card ${activeTab === 'chat' ? 'bento-card--full' : ''}`}>
-            <div className="section-header">
-              <span className="section-title">Chat-to-Modify</span>
-              <span className="section-tag">Conversational Delta</span>
-            </div>
-
-            {/* Quick Modification Pills */}
-            <div className="quick-mods-bar">
-              {QUICK_MODIFICATIONS.map((qm, i) => (
-                <button
-                  key={i}
-                  className="quick-mod-btn"
-                  onClick={() => handleModify(qm)}
-                  disabled={modifying}
-                >
-                  + {qm}
-                </button>
-              ))}
-            </div>
-
-            {/* Chat Conversation History */}
-            {chatHistory.length > 0 && (
-              <div className="chat-history">
-                {chatHistory.map((msg, i) => (
-                  <div
-                    key={i}
-                    className={`chat-bubble chat-bubble--${msg.role}${msg.isError ? ' chat-bubble--error' : ''}`}
-                  >
-                    <div className="chat-bubble-header">
-                      <span>{msg.role === 'user' ? 'Designer' : 'CAD Kernel'}</span>
-                      {msg.model && <span className="chat-bubble-meta">{msg.model}</span>}
-                    </div>
-                    <div className="chat-bubble-text">{msg.text}</div>
-                  </div>
-                ))}
-                <div ref={chatEndRef} />
-              </div>
-            )}
-
-            {/* Modification Input */}
-            <div className="chat-input-row">
-              <textarea
-                aria-label="CAD modification request"
-                className="chat-textarea"
-                placeholder='e.g. "Increase flange radius by 5mm" or "Add 2mm chamfer"'
-                value={modifyPrompt}
-                rows={2}
-                onChange={(e) => setModifyPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                    e.preventDefault();
-                    handleModify();
-                  }
-                }}
-                disabled={modifying}
-              />
-              <button
-                className="chat-send-btn"
-                onClick={() => handleModify()}
-                disabled={modifying || !modifyPrompt.trim()}
-                title="Apply modification (Ctrl+Enter)"
-              >
-                {modifying ? (
-                  <div className="spinner" style={{ width: '14px', height: '14px' }} />
-                ) : (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
-                    <span>Apply</span>
-                  </span>
-                )}
-              </button>
-            </div>
-          </div>
-        )}
+        <ChatModifyPanel
+          scriptId={scriptId}
+          activeTab={activeTab}
+          chatHistory={chatHistory}
+          chatEndRef={chatEndRef}
+          modifyPrompt={modifyPrompt}
+          setModifyPrompt={setModifyPrompt}
+          modifying={modifying}
+          handleModify={handleModify}
+          QUICK_MODIFICATIONS={QUICK_MODIFICATIONS}
+        />
       </aside>
 
       {/* ── MAIN 3D CAD VIEWPORT & HUD (AutoCAD Engine Mode) ────── */}
@@ -1309,81 +936,17 @@ export default function App({ onGoHome }) {
         )}
 
         {/* Error Banner */}
-        {error && (
-          <div className="error-banner">
-            <span className="error-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-            </span>
-            <div className="error-msg">{error}</div>
-            <button className="error-dismiss" onClick={() => setError(null)}>✕</button>
-          </div>
-        )}
+        <ErrorBanner error={error} onDismiss={dismissError} />
 
         {/* Python CAD Script Code Inspector Modal */}
-        {showCodeModal && pythonCode && (
-          <div className="modal-backdrop" onClick={() => setShowCodeModal(false)}>
-            <div
-              className="modal-card"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="code-modal-title"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="modal-header">
-                <div className="modal-title-group">
-                  <span className="modal-icon">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="16 18 22 12 16 6"/>
-                      <polyline points="8 6 2 12 8 18"/>
-                    </svg>
-                  </span>
-                  <div>
-                    <div className="modal-title" id="code-modal-title">build123d Python Script ({scriptId})</div>
-                    <div className="modal-subtitle">Runtime build123d script with injected export paths</div>
-                  </div>
-                </div>
-                <button
-                  className="modal-close-btn"
-                  onClick={() => setShowCodeModal(false)}
-                  aria-label="Close code inspector"
-                  autoFocus
-                >✕</button>
-              </div>
-
-              <pre className="modal-code"><code>{pythonCode}</code></pre>
-
-              <div className="modal-footer">
-                <span className="modal-hint">All parameters are exposed in the PARAMS dict at the top of the script.</span>
-                <div className="modal-actions">
-                  <button
-                    className="toolbar-btn export-btn"
-                    onClick={async () => {
-                      try {
-                        if (!navigator.clipboard) throw new Error('Clipboard unavailable');
-                        await navigator.clipboard.writeText(pythonCode);
-                        alert('Python CAD code copied to clipboard!');
-                      } catch {
-                        setError('Clipboard access was denied. Select and copy the code manually.');
-                      }
-                    }}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                    </svg>
-                    <span>Copy Code</span>
-                  </button>
-                  <button className="toolbar-btn" onClick={() => setShowCodeModal(false)}>
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        <CodeInspectorModal
+          isOpen={showCodeModal}
+          onClose={() => setShowCodeModal(false)}
+          pythonCode={pythonCode}
+          partName={partName}
+          scriptId={scriptId}
+          onError={setError}
+        />
       </main>
 
       {/* User Authentication Modal */}

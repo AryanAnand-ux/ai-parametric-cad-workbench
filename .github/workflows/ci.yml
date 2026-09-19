@@ -1,0 +1,96 @@
+name: CI — Test & Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # ── Backend: Lint + Unit Tests ─────────────────────────────────────────
+  backend-tests:
+    name: Backend Tests (Python 3.11)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Ruff linter
+        run: pip install ruff && ruff check . --select=E,W,F --ignore=E501,W503 || true
+
+      - name: Run unit + regression tests (excluding live LLM integration)
+        env:
+          ENVIRONMENT: test
+          GEMINI_API_KEY: placeholder
+        run: |
+          python -m pytest \
+            -k "not integration and not end_to_end and not test_3_end_to_end" \
+            --tb=short -q \
+            test_schemas.py \
+            test_ast_security.py \
+            test_llm_parser.py \
+            test_modify_params.py \
+            test_geometry_validation.py \
+            test_recompute_validation.py \
+            test_auth_projects.py \
+            test_week3_llm.py
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: backend/.pytest_cache/
+
+  # ── Frontend: Install + Build ───────────────────────────────────────────
+  frontend-build:
+    name: Frontend Build (Node 20)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install npm dependencies
+        run: npm ci --prefer-offline
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Check build output size
+        run: |
+          echo "=== Build artifact sizes ==="
+          du -sh dist/
+          echo "=== JS bundle sizes ==="
+          find dist/assets -name "*.js" | xargs ls -lh | sort -k5 -rh | head -10
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 3

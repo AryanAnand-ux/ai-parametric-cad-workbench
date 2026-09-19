@@ -46,3 +46,25 @@ async def create_tables():
     """Create all tables (used on startup). Safe to call multiple times."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # Automatic SQLite migration for newly added columns
+        if "sqlite" in DATABASE_URL:
+            def _migrate_sqlite_columns(sync_conn):
+                cursor = sync_conn.connection.cursor()
+                try:
+                    cursor.execute("PRAGMA table_info(generations)")
+                    existing = {row[1] for row in cursor.fetchall()}
+                    if existing:  # Table exists
+                        migrations = [
+                            ("is_public", "INTEGER DEFAULT 0"),
+                            ("like_count", "INTEGER DEFAULT 0"),
+                            ("fork_count", "INTEGER DEFAULT 0"),
+                            ("tags_json", "TEXT"),
+                            ("forked_from", "VARCHAR(36)"),
+                        ]
+                        for col_name, col_def in migrations:
+                            if col_name not in existing:
+                                cursor.execute(f"ALTER TABLE generations ADD COLUMN {col_name} {col_def}")
+                except Exception:
+                    pass
+            await conn.run_sync(_migrate_sqlite_columns)

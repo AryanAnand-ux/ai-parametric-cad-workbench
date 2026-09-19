@@ -81,7 +81,7 @@ const Icons = {
   ),
 };
 
-export default function LandingPage({ onEnterApp }) {
+export default function LandingPage({ onEnterApp, onGoToGallery }) {
   const [scrollY, setScrollY] = useState(0);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [language, setLanguage] = useState('EN');
@@ -176,6 +176,18 @@ export default function LandingPage({ onEnterApp }) {
                 {link}
               </a>
             ))}
+            <button
+              onClick={onGoToGallery}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                color: 'inherit', fontSize: '13px', fontWeight: '500',
+                letterSpacing: '0.01em', opacity: 0.9, transition: 'opacity 0.2s ease',
+              }}
+              onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+              onMouseLeave={e => e.currentTarget.style.opacity = '0.9'}
+            >
+              Gallery
+            </button>
           </nav>
 
           {/* Center Brand Logo (Julie Granger Signature Style) */}

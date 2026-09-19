@@ -37,6 +37,8 @@ from models.user import User
 from services.auth_service import get_optional_user
 from routes.auth import router as auth_router
 from routes.projects import router as projects_router, save_generation_record, save_version_record
+from routes.gallery import gallery_router
+from middleware.telemetry import TelemetryMiddleware, metrics as telemetry_metrics
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cad_workbench.main")
@@ -152,9 +154,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount authentication & project workspace routers
+# Structured JSON request telemetry (must come after CORS)
+app.add_middleware(TelemetryMiddleware)
+
+# Mount authentication, workspace, and gallery routers
 app.include_router(auth_router)
 app.include_router(projects_router)
+app.include_router(gallery_router)
 
 
 # ---------------------------------------------------------------------------
@@ -175,10 +181,26 @@ async def health_check():
     }
 
 
+@app.get("/api/metrics")
+async def get_metrics():
+    """
+    Lightweight real-time observability endpoint.
+    Returns request counts, error rates, latency percentiles,
+    and CAD generation success stats from the in-process telemetry store.
+    """
+    return {
+        "service": "AI-Driven Parametric CAD Workbench",
+        "version": "2.0.0",
+        **telemetry_metrics.summary(),
+    }
+
+
+
+
 def require_artifact_access(filename: str, provided_token: str | None) -> Path:
     """Resolve a public mesh artifact while keeping generated Python source protected."""
     path = Path(filename)
-    if path.name != filename or path.suffix.lower() not in {".stl", ".step", ".py"}:
+    if path.name != filename or path.suffix.lower() not in {".stl", ".step", ".obj", ".glb", ".py"}:
         raise HTTPException(status_code=404, detail="Artifact not found.")
     if not is_safe_script_id(path.stem):
         raise HTTPException(status_code=404, detail="Artifact not found.")
@@ -188,6 +210,7 @@ def require_artifact_access(filename: str, provided_token: str | None) -> Path:
     if not artifact_path.is_file():
         raise HTTPException(status_code=404, detail="Artifact not found.")
     return artifact_path
+
 
 
 @app.get("/static/models/{filename:path}")
@@ -626,26 +649,42 @@ async def download_model(
         raise HTTPException(status_code=400, detail="Invalid script identifier.")
     
     fmt_lower = fmt.lower().strip(".")
-    allowed_formats = {"stl": "application/sla", "step": "application/step", "stp": "application/step"}
-    
+    allowed_formats = {
+        "stl":  "application/sla",
+        "step": "application/step",
+        "stp":  "application/step",
+        "obj":  "model/obj",
+        "glb":  "model/gltf-binary",
+    }
+
     if fmt_lower not in allowed_formats:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported format '{fmt}'. Public formats: stl, step, stp. For Python source code, use GET /api/script/{script_id} with admin authentication."
+            detail=(
+                f"Unsupported format '{fmt}'. "
+                "Public formats: stl, step, stp, obj, glb. "
+                f"For Python source code, use GET /api/script/{script_id} with admin authentication."
+            )
         )
-        
-    ext = "step" if fmt_lower in ("step", "stp") else fmt_lower
+
+    # Normalise extension
+    if fmt_lower == "stp":
+        ext = "step"
+    else:
+        ext = fmt_lower
+
     file_path = MODELS_DIR / f"{script_id}.{ext}"
-    
+
     if not file_path.exists():
         raise HTTPException(
             status_code=404,
-            detail=f"Artifact '{script_id}.{ext}' not found on server."
+            detail=f"Artifact '{script_id}.{ext}' not found. "
+                   f"Ensure the model was generated successfully before downloading."
         )
-        
+
     media_type = allowed_formats[fmt_lower]
     download_filename = f"{script_id}.{ext}"
-    
+
     return FileResponse(
         path=str(file_path),
         media_type=media_type,

@@ -267,3 +267,44 @@ export async function modifyPart(
   });
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Gallery API
+// ---------------------------------------------------------------------------
+
+export async function getGallery({ page = 1, perPage = 20, search = '', tag = '', sortBy = 'recent' } = {}) {
+  const params = { page, per_page: perPage };
+  if (search) params.search = search;
+  if (tag) params.tag = tag;
+  if (sortBy) params.sort_by = sortBy;
+  const { data } = await api.get('/api/gallery', { params });
+  return data;
+}
+
+export async function publishDesign(generationId, tags = []) {
+  const { data } = await api.post(`/api/designs/${generationId}/publish`, tags);
+  return data;
+}
+
+export async function unpublishDesign(generationId) {
+  const { data } = await api.post(`/api/designs/${generationId}/unpublish`);
+  return data;
+}
+
+export async function likeDesign(generationId) {
+  const { data } = await api.post(`/api/designs/${generationId}/like`);
+  return data;
+}
+
+export async function forkDesign(generationId, projectId = null) {
+  const { data } = await api.post(`/api/designs/${generationId}/fork`, null, {
+    params: projectId ? { project_id: projectId } : {},
+  });
+  return data;
+}
+
+export async function getMetrics() {
+  const { data } = await api.get('/api/metrics');
+  return data;
+}
+

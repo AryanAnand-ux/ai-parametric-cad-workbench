@@ -392,8 +392,12 @@ class CADRunner:
 
         stl_filename  = f"{script_id}.stl"
         step_filename = f"{script_id}.step"
+        obj_filename  = f"{script_id}.obj"
+        glb_filename  = f"{script_id}.glb"
         stl_path  = MODELS_DIR / stl_filename
         step_path = MODELS_DIR / step_filename
+        obj_path  = MODELS_DIR / obj_filename
+        glb_path  = MODELS_DIR / glb_filename
 
         wrapper = _build_wrapper(
             python_code,
@@ -616,6 +620,24 @@ class CADRunner:
                             + " | ".join(geometry_warnings)
                         )
 
+                    # ── Additional export formats (OBJ, GLB) ──────────────
+                    # Derived from the already-validated STL mesh — no extra subprocess.
+                    try:
+                        mesh.export(str(obj_path))
+                        logger.info(f"[CAD] OBJ export: {obj_path.name}")
+                    except Exception as obj_err:
+                        logger.warning(f"[CAD] OBJ export failed: {obj_err}")
+
+                    try:
+                        # GLB (binary GLTF) — ideal for WebGL, AR, and 3D web embeds
+                        scene = trimesh.scene.scene.Scene(geometry={script_id: mesh})
+                        glb_bytes = scene.export(file_type="glb")
+                        with open(str(glb_path), "wb") as glb_file:
+                            glb_file.write(glb_bytes)
+                        logger.info(f"[CAD] GLB export: {glb_path.name}")
+                    except Exception as glb_err:
+                        logger.warning(f"[CAD] GLB export failed: {glb_err}")
+
                     del mesh
                     gc.collect()
                 except Exception as me:
@@ -641,6 +663,8 @@ class CADRunner:
                 "returncode": returncode,
                 "mesh_url":  f"/static/models/{stl_filename}"  if stl_path.exists()  else None,
                 "step_url":  f"/static/models/{step_filename}" if step_path.exists()  else None,
+                "obj_url":   f"/static/models/{obj_filename}"  if obj_path.exists()   else None,
+                "glb_url":   f"/static/models/{glb_filename}"  if glb_path.exists()   else None,
                 "script_url": f"/static/models/{script_id}.py" if py_path.exists()   else None,
                 "mesh_info": mesh_info,
                 "python_code": python_code,
