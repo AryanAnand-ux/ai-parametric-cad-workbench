@@ -29,132 +29,144 @@ export default function ViewportToolbar({
   setShowCodeModal,
   toolbarRef,
 }) {
+  // Compact display labels to avoid navbar congestion
+  const displayStyleName = (VISUAL_STYLES[visualStyle]?.name || 'Shaded').replace(' with Edges', '');
+  const displayCamName = activeCamView === 'iso' ? 'Iso' : activeCamView.toUpperCase();
+  const displayMatName = (MATERIAL_PRESETS[materialType]?.name || 'Finish').replace('Standard ', '');
+
   return (
     <div className="header-nav-dropdowns" ref={toolbarRef}>
-      {/* Visual Style Dropdown */}
-      <div className="vt-dropdown">
-        <button
-          type="button"
-          className={`vt-dropdown-trigger ${openDropdown === 'style' ? 'open' : ''}`}
-          onClick={() => toggleDropdown('style')}
-          title="Select 3D Display Style"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-            <polyline points="2 17 12 22 22 17"/>
-            <polyline points="2 12 12 17 22 12"/>
-          </svg>
-          <span>{VISUAL_STYLES[visualStyle]?.name || 'Shaded'}</span>
-          <span className="chevron">▼</span>
-        </button>
-        {openDropdown === 'style' && (
-          <div className="vt-dropdown-menu">
-            <div className="vt-dropdown-label">Visual Style</div>
-            {Object.entries(VISUAL_STYLES).map(([key, s]) => (
+      {/* Segmented Viewport Controls: Style | Cam | Material */}
+      <div className="vt-segmented-group">
+        {/* Visual Style Dropdown */}
+        <div className="vt-dropdown">
+          <button
+            type="button"
+            className={`vt-dropdown-trigger ${openDropdown === 'style' ? 'open' : ''}`}
+            onClick={() => toggleDropdown('style')}
+            title="Display Style (Shaded / Wireframe / Edges)"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+              <polyline points="2 17 12 22 22 17"/>
+              <polyline points="2 12 12 17 22 12"/>
+            </svg>
+            <span>{displayStyleName}</span>
+            <span className="chevron">▼</span>
+          </button>
+          {openDropdown === 'style' && (
+            <div className="vt-dropdown-menu">
+              <div className="vt-dropdown-label">Visual Style</div>
+              {Object.entries(VISUAL_STYLES).map(([key, s]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`vt-dropdown-item ${visualStyle === key ? 'active' : ''}`}
+                  onClick={() => { setVisualStyle(key); setOpenDropdown(null); }}
+                >
+                  <span className="item-dot" />
+                  <span>{s.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="vt-divider" />
+
+        {/* Camera View Dropdown */}
+        <div className="vt-dropdown">
+          <button
+            type="button"
+            className={`vt-dropdown-trigger ${openDropdown === 'view' ? 'open' : ''}`}
+            onClick={() => toggleDropdown('view')}
+            title="Camera Angle (Isometric / Top / Front / Side)"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            <span>{displayCamName}</span>
+            <span className="chevron">▼</span>
+          </button>
+          {openDropdown === 'view' && (
+            <div className="vt-dropdown-menu">
+              <div className="vt-dropdown-label">Camera View</div>
+              {[['iso','SE Isometric'],['top','Top View (Z+)'],['front','Front View (Y-)'],['side','Side View (X+)']].map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={`vt-dropdown-item ${activeCamView === v ? 'active' : ''}`}
+                  onClick={() => { handleCameraPreset(v); setOpenDropdown(null); }}
+                >
+                  <span className="item-dot" />
+                  <span>{label}</span>
+                </button>
+              ))}
+              <div className="vt-dropdown-sep" />
               <button
-                key={key}
                 type="button"
-                className={`vt-dropdown-item ${visualStyle === key ? 'active' : ''}`}
-                onClick={() => { setVisualStyle(key); setOpenDropdown(null); }}
+                className="vt-dropdown-item"
+                onClick={() => { viewerRef.current?.resetView(); setOpenDropdown(null); }}
               >
                 <span className="item-dot" />
-                <span>{s.name}</span>
+                <span>Fit to View</span>
               </button>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
 
-      {/* Camera View Dropdown */}
-      <div className="vt-dropdown">
-        <button
-          type="button"
-          className={`vt-dropdown-trigger ${openDropdown === 'view' ? 'open' : ''}`}
-          onClick={() => toggleDropdown('view')}
-          title="Select Camera Orientation"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-            <circle cx="12" cy="13" r="4"/>
-          </svg>
-          <span>{activeCamView === 'iso' ? 'Isometric' : activeCamView.toUpperCase()}</span>
-          <span className="chevron">▼</span>
-        </button>
-        {openDropdown === 'view' && (
-          <div className="vt-dropdown-menu">
-            <div className="vt-dropdown-label">Camera View</div>
-            {[['iso','SE Isometric'],['top','Top View (Z+)'],['front','Front View (Y-)'],['side','Side View (X+)']].map(([v, label]) => (
-              <button
-                key={v}
-                type="button"
-                className={`vt-dropdown-item ${activeCamView === v ? 'active' : ''}`}
-                onClick={() => { handleCameraPreset(v); setOpenDropdown(null); }}
-              >
-                <span className="item-dot" />
-                <span>{label}</span>
-              </button>
-            ))}
-            <div className="vt-dropdown-sep" />
-            <button
-              type="button"
-              className="vt-dropdown-item"
-              onClick={() => { viewerRef.current?.resetView(); setOpenDropdown(null); }}
-            >
-              <span className="item-dot" />
-              <span>Fit to View</span>
-            </button>
-          </div>
-        )}
-      </div>
+        <div className="vt-divider" />
 
-      {/* Surface Finish / Material Dropdown */}
-      <div className="vt-dropdown">
-        <button
-          type="button"
-          className={`vt-dropdown-trigger ${openDropdown === 'material' ? 'open' : ''}`}
-          onClick={() => toggleDropdown('material')}
-          title="Change Material Finish & Canvas"
-        >
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: MATERIAL_PRESETS[materialType]?.swatch || '#CBD5E1', display: 'inline-block' }} />
-          <span>{MATERIAL_PRESETS[materialType]?.name || 'Finish'}</span>
-          <span className="chevron">▼</span>
-        </button>
-        {openDropdown === 'material' && (
-          <div className="vt-dropdown-menu">
-            <div className="vt-dropdown-label">Surface Material</div>
-            {Object.entries(MATERIAL_PRESETS).map(([key, mat]) => (
-              <button
-                key={key}
-                type="button"
-                className={`vt-dropdown-item ${materialType === key ? 'active' : ''}`}
-                onClick={() => { setMaterialType(key); setOpenDropdown(null); }}
-              >
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: mat.swatch, flexShrink: 0, display: 'inline-block' }} />
-                <span>{mat.name}</span>
-              </button>
-            ))}
-            <div className="vt-dropdown-sep" />
-            <div className="vt-dropdown-label">Canvas Environment</div>
-            {Object.entries(VIEWPORT_BACKGROUNDS).map(([key, bg]) => (
-              <button
-                key={key}
-                type="button"
-                className={`vt-dropdown-item ${backgroundTheme === key ? 'active' : ''}`}
-                onClick={() => { setBackgroundTheme(key); setOpenDropdown(null); }}
-              >
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: `linear-gradient(135deg,${bg.topColor},${bg.bottomColor})`, flexShrink: 0, display: 'inline-block' }} />
-                <span>{bg.name}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Surface Finish / Material Dropdown */}
+        <div className="vt-dropdown">
+          <button
+            type="button"
+            className={`vt-dropdown-trigger ${openDropdown === 'material' ? 'open' : ''}`}
+            onClick={() => toggleDropdown('material')}
+            title="Surface Material & Canvas Finish"
+          >
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: MATERIAL_PRESETS[materialType]?.swatch || '#CBD5E1', display: 'inline-block' }} />
+            <span>{displayMatName}</span>
+            <span className="chevron">▼</span>
+          </button>
+          {openDropdown === 'material' && (
+            <div className="vt-dropdown-menu">
+              <div className="vt-dropdown-label">Surface Material</div>
+              {Object.entries(MATERIAL_PRESETS).map(([key, mat]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`vt-dropdown-item ${materialType === key ? 'active' : ''}`}
+                  onClick={() => { setMaterialType(key); setOpenDropdown(null); }}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: mat.swatch, flexShrink: 0, display: 'inline-block' }} />
+                  <span>{mat.name}</span>
+                </button>
+              ))}
+              <div className="vt-dropdown-sep" />
+              <div className="vt-dropdown-label">Canvas Environment</div>
+              {Object.entries(VIEWPORT_BACKGROUNDS).map(([key, bg]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`vt-dropdown-item ${backgroundTheme === key ? 'active' : ''}`}
+                  onClick={() => { setBackgroundTheme(key); setOpenDropdown(null); }}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: `linear-gradient(135deg,${bg.topColor},${bg.bottomColor})`, flexShrink: 0, display: 'inline-block' }} />
+                  <span>{bg.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Export Dropdown */}
       <div className="vt-dropdown">
         <button
           type="button"
-          className={`vt-dropdown-trigger ${openDropdown === 'export' ? 'open' : ''}`}
+          className={`vt-dropdown-trigger vt-export-trigger ${openDropdown === 'export' ? 'open' : ''}`}
           onClick={() => toggleDropdown('export')}
           title={meshUrl || stepUrl ? "Download 3D CAD Files" : "Generate a model first to export"}
           style={{ opacity: (meshUrl || stepUrl || pythonCode) ? 1 : 0.65 }}

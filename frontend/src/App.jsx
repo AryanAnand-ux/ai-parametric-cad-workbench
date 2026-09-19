@@ -188,7 +188,9 @@ export default function App({ onGoHome, onGoToGallery }) {
   const { user, isAuthenticated, login, register, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [openDropdown, setOpenDropdown] = useState(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const userMenuRef = useRef(null);
   const debounceTimerRef = useRef(null);
   const scrollTimerRef = useRef(null);
   const recomputeSequenceRef = useRef(0);
@@ -207,15 +209,18 @@ export default function App({ onGoHome, onGoToGallery }) {
 
   // Close dropdown on outside click
   useEffect(() => {
-    if (!openDropdown) return undefined;
+    if (!openDropdown && !userMenuOpen) return undefined;
     const handle = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setOpenDropdown(null);
       }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setUserMenuOpen(false);
+      }
     };
     document.addEventListener('mousedown', handle);
     return () => document.removeEventListener('mousedown', handle);
-  }, [openDropdown]);
+  }, [openDropdown, userMenuOpen]);
 
   const toggleDropdown = (key) => setOpenDropdown((prev) => (prev === key ? null : key));
 
@@ -426,18 +431,27 @@ export default function App({ onGoHome, onGoToGallery }) {
       {/* ── BENTO HEADER ─────────────────────────────────────────── */}
       <header className="header">
         <div className="header-logo">
+          <button
+            className="sidebar-toggle-btn"
+            onClick={() => setSidebarOpen((v) => !v)}
+            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            aria-label="Toggle sidebar"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              {sidebarOpen ? <polyline points="15 18 9 12 15 6" /> : <polyline points="9 18 15 12 9 6" />}
+            </svg>
+          </button>
           <div className="header-logo-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
               <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
               <line x1="12" y1="22.08" x2="12" y2="12"/>
             </svg>
           </div>
-          <div>
-            <div className="header-title">The CAD Atelier</div>
-            <div className="header-subtitle">build123d B-Rep Solid Modeling Kernel</div>
+          <div className="header-brand-info">
+            <span className="header-title">The CAD Atelier</span>
+            <span className="header-badge-tag">v2.0</span>
           </div>
-          <span className="header-badge">ATELIER SPEC V2.0</span>
         </div>
 
         {/* ── NAVBAR CAD OPTIONS DROPDOWNS ── */}
@@ -469,46 +483,56 @@ export default function App({ onGoHome, onGoToGallery }) {
         />
 
         <div className="header-actions">
-          <button
-            className="sidebar-toggle-btn"
-            onClick={() => setSidebarOpen((v) => !v)}
-            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-            aria-label="Toggle sidebar"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              {sidebarOpen ? <polyline points="15 18 9 12 15 6" /> : <polyline points="9 18 15 12 9 6" />}
-            </svg>
-          </button>
+          {/* Quick Undo if history available */}
           {modelHistory.length > 0 && (
             <button
-              className="toolbar-btn header-action-btn"
+              className="toolbar-btn header-action-btn header-btn-undo"
               onClick={popSnapshot}
-              title={`Undo to previous model state (${modelHistory.length} in stack)`}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              title={`Undo to previous state (${modelHistory.length} in stack)`}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 10h10a5 5 0 0 1 5 5v2"/>
                 <polyline points="7 6 3 10 7 14"/>
               </svg>
-              <span>Undo ({modelHistory.length})</span>
-            </button>
-          )}
-          {pythonCode && (
-            <button
-              className="toolbar-btn header-action-btn"
-              onClick={() => setShowCodeModal(true)}
-              title="Inspect Python CAD Script"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="16 18 22 12 16 6"/>
-                <polyline points="8 6 2 12 8 18"/>
-              </svg>
-              <span>Inspect Code</span>
+              <span>Undo</span>
+              <span className="header-btn-badge">{modelHistory.length}</span>
             </button>
           )}
 
-          {/* Workspaces & Saved Models */}
+          {/* Inspect Python Code */}
+          {pythonCode && (
+            <button
+              className="toolbar-btn header-action-btn header-icon-btn"
+              onClick={() => setShowCodeModal(true)}
+              title="Inspect Python CAD Script (build123d)"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="16 18 22 12 16 6"/>
+                <polyline points="8 6 2 12 8 18"/>
+              </svg>
+              <span className="header-btn-text">Code</span>
+            </button>
+          )}
+
+          {/* Share Design Modal Trigger */}
+          {scriptId && (
+            <button
+              className="toolbar-btn header-action-btn"
+              onClick={() => setShowShareModal(true)}
+              title="Share CAD Model or Copy 3D Embed"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+                <polyline points="16 6 12 2 8 6"/>
+                <line x1="12" y1="2" x2="12" y2="15"/>
+              </svg>
+              <span>Share</span>
+            </button>
+          )}
+
+          <div className="header-divider" />
+
+          {/* Workspaces Drawer */}
           <button
             className="toolbar-btn header-action-btn"
             onClick={() => {
@@ -519,91 +543,91 @@ export default function App({ onGoHome, onGoToGallery }) {
               }
             }}
             title="Open Workspaces & Saved Designs"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
-            <span>📁</span>
-            <span>Workspaces</span>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span className="header-btn-text">Workspaces</span>
           </button>
 
-          {/* Share Design Modal Trigger */}
-          {scriptId && (
-            <button
-              className="toolbar-btn header-action-btn"
-              onClick={() => setShowShareModal(true)}
-              title="Share CAD Model or Copy 3D Embed"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <span>🔗</span>
-              <span>Share</span>
-            </button>
-          )}
-
-          {/* Guided Tour Trigger */}
+          {/* Guided Tour Trigger (clean icon button) */}
           <button
-            className="toolbar-btn header-action-btn"
+            className="toolbar-btn header-action-btn header-icon-only-btn"
             onClick={() => setShowOnboarding(true)}
-            title="Launch Interactive CAD Studio Walkthrough"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+            title="Interactive Studio Tour"
           >
             <span>💡</span>
-            <span>Tour</span>
           </button>
 
-          {/* Auth State Button */}
+          <div className="header-divider" />
+
+          {/* CAD Engine Status Indicator (compact pill) */}
+          <div
+            className="header-status-indicator"
+            title={`CAD Engine: ${backendStatus === 'online' ? 'Online & Operational' : backendStatus === 'offline' ? 'Offline' : 'Connecting'}`}
+          >
+            <span
+              className="status-dot"
+              style={{ background: backendStatus === 'online' ? '#489235' : '#EF4444' }}
+            />
+            <span className="status-label">{backendStatus === 'online' ? 'Ready' : 'Connecting'}</span>
+          </div>
+
+          {/* Auth State Button / Profile Dropdown Menu */}
           {isAuthenticated ? (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <div className="vt-dropdown" ref={userMenuRef}>
               <button
-                className="toolbar-btn header-action-btn"
-                onClick={() => setShowProjectSidebar(true)}
-                title={`Account: ${user?.email}`}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  borderColor: 'rgba(255, 253, 226, 0.35)',
-                }}
+                className="toolbar-btn header-action-btn user-profile-btn"
+                onClick={() => setUserMenuOpen((v) => !v)}
+                title={`Signed in as ${user?.email}`}
               >
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#489235', display: 'inline-block' }} />
-                <span>{user?.display_name || user?.email?.split('@')[0]}</span>
-                <span style={{ fontSize: '10px', background: 'rgba(255, 253, 226, 0.15)', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
-                  {user?.plan_tier || 'PRO'}
+                <span className="user-avatar-dot">
+                  {(user?.display_name || user?.email || 'U').charAt(0).toUpperCase()}
                 </span>
+                <span className="user-name-label">{user?.display_name || user?.email?.split('@')[0]}</span>
+                <span className="user-plan-badge">{user?.plan_tier || 'PRO'}</span>
+                <span className="chevron">▼</span>
               </button>
-              <button
-                className="toolbar-btn header-action-btn"
-                onClick={logout}
-                title="Sign Out"
-                style={{ padding: '6px 10px', fontSize: '11px', opacity: 0.8 }}
-              >
-                Log Out
-              </button>
+              {userMenuOpen && (
+                <div className="vt-dropdown-menu user-dropdown-menu">
+                  <div className="user-menu-header">
+                    <div className="user-menu-name">{user?.display_name || 'CAD Designer'}</div>
+                    <div className="user-menu-email">{user?.email}</div>
+                  </div>
+                  <div className="vt-dropdown-sep" />
+                  <button
+                    type="button"
+                    className="vt-dropdown-item"
+                    onClick={() => { setShowProjectSidebar(true); setUserMenuOpen(false); }}
+                  >
+                    <span>📁 Saved Projects</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="vt-dropdown-item"
+                    onClick={() => { setShowOnboarding(true); setUserMenuOpen(false); }}
+                  >
+                    <span>💡 Studio Tour</span>
+                  </button>
+                  <div className="vt-dropdown-sep" />
+                  <button
+                    type="button"
+                    className="vt-dropdown-item text-danger"
+                    onClick={() => { logout(); setUserMenuOpen(false); }}
+                  >
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <button
-              className="toolbar-btn header-action-btn"
+              className="toolbar-btn header-action-btn sign-in-btn"
               onClick={() => setShowAuthModal(true)}
-              style={{
-                background: '#FFFDE2',
-                color: '#474040',
-                fontWeight: 600,
-                borderColor: '#FFFDE2',
-              }}
             >
               Sign In
             </button>
           )}
-
-          <div className="status-pill" style={{ borderColor: backendStatus === 'online' ? '#10B981' : '#EF4444' }}>
-            <span
-              className="status-dot"
-              style={{ background: backendStatus === 'online' ? '#10B981' : '#EF4444' }}
-            />
-            <span>
-              {backendStatus === 'online'
-                ? 'CAD Engine Online'
-                : backendStatus === 'offline' ? 'CAD Engine Offline' : 'Connecting...'}
-            </span>
-          </div>
         </div>
       </header>
 
