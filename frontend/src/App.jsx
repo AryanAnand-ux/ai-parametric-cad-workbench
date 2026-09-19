@@ -43,12 +43,13 @@ const fileUrl = (path) => {
   return resolveAssetUrl(path);
 };
 
-// Categorized Preset CAD Prompts
+// Categorized Preset CAD Prompts — 8 Universal Archetypes
 const PRESET_CATEGORIES = [
   {
     category: 'Engineering & Thermal',
     prompts: [
       { label: 'CPU Heatsink', prompt: 'High-performance linear extruded aluminum CPU heatsink with rectangular fin array, thick heat spreader base plate, and 4 corner mounting screw holes' },
+      { label: 'Radial Heatsink', prompt: 'Cylindrical radial heatsink with solid inner core, 12 radial cooling fins, and center mounting bore' },
       { label: 'Weld Neck Flange', prompt: 'Class 150 weld neck pipe flange with raised face, through bore, tapered welding neck hub, and 8-bolt circle pattern' },
       { label: 'V-Belt Pulley', prompt: 'Single-groove industrial V-belt drive pulley with central hub, shaft bore, keyway slot, web plate, and 38-degree trapezoidal V-groove rim' }
     ]
@@ -58,7 +59,16 @@ const PRESET_CATEGORIES = [
     prompts: [
       { label: 'Spur Gear Blank', prompt: 'Machined industrial spur gear blank with central hub, shaft bore, standard keyway, recessed web, and outer rim with circular lightening holes' },
       { label: 'Stepped Drive Shaft', prompt: 'Three-step mechanical transmission drive shaft with precision bearing journals, central gear seating shoulder, keyway, and retaining circlip groove' },
-      { label: 'Spider Coupling', prompt: 'Three-jaw flexible spider shaft coupling hub with central bore, keyway, clamping slit, and interlocking curved drive jaws' }
+      { label: 'Spider Coupling', prompt: 'Three-jaw flexible spider shaft coupling hub with central bore, keyway, clamping slit, and interlocking curved drive jaws' },
+      { label: 'Drive Sprocket', prompt: 'Roller chain drive sprocket blank with central keyed bore and outer toothed rim' }
+    ]
+  },
+  {
+    category: 'Vessels & Ducts',
+    prompts: [
+      { label: 'Coffee Mug', prompt: 'Ceramic style coffee mug with cylindrical body, hollow cavity, smooth rim fillet, and curved ergonomic sweep handle' },
+      { label: 'Swept 90° Elbow', prompt: '90 degree smooth swept pipe elbow duct with circular cross section, swept along circular arc path with bolted flanged ends' },
+      { label: 'Pressure Canister', prompt: 'Cylindrical pressure vessel canister with domed hemispherical top, thick base, and NPT threaded central port boss' }
     ]
   },
   {
@@ -71,11 +81,11 @@ const PRESET_CATEGORIES = [
     ]
   },
   {
-    category: 'Enclosures & Fluid',
+    category: 'Enclosures & Brackets',
     prompts: [
       { label: 'Enclosure Box', prompt: 'Rectangular electronics project box bottom enclosure with rounded corners, hollow interior, 4 corner PCB screw standoff bosses, and side cable gland cutout' },
-      { label: 'Hydraulic Manifold', prompt: 'High-pressure hydraulic valve subplate manifold block with standard P, T, A, B port counterbores, internal galleries, and mounting holes' },
-      { label: 'Mounting Bracket', prompt: 'A mounting bracket with four M5 corner holes, 80x50x5mm with 4mm fillets' }
+      { label: 'Mounting Bracket', prompt: 'A mounting bracket with four M5 corner holes, 80x50x5mm with 4mm fillets' },
+      { label: 'Hydraulic Manifold', prompt: 'High-pressure hydraulic valve subplate manifold block with standard P, T, A, B port counterbores, internal galleries, and mounting holes' }
     ]
   }
 ];
@@ -84,7 +94,9 @@ const QUICK_MODIFICATIONS = [
   'Make walls 2mm thicker',
   'Add 4x M3 corner mounting holes',
   'Add 3mm fillets to all vertical edges',
-  'Increase overall length by 20mm'
+  'Increase overall length by 20mm',
+  'Add central 15mm bore hole',
+  'Hollow out interior with 3mm shell'
 ];
 
 export default function App({ onGoHome, onGoToGallery }) {
@@ -227,7 +239,7 @@ export default function App({ onGoHome, onGoToGallery }) {
     updateStream({
       phase: 'rag_retrieval',
       progress: 12,
-      message: 'Vector search across 101 CAD blueprints...',
+      message: 'Vector search across 121 CAD blueprints...',
       attempts: 0,
     });
 

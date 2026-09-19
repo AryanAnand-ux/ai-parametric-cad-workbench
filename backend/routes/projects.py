@@ -255,6 +255,10 @@ async def get_generation(
                     "version_number": v.version_number,
                     "modification_prompt": v.modification_prompt,
                     "script_id": v.script_id,
+                    "python_code": v.python_code,
+                    "parameters": _safe_json(v.parameters_json),
+                    "mesh_url": v.mesh_url,
+                    "step_url": v.step_url,
                     "created_at": v.created_at.isoformat() if v.created_at else "",
                 }
                 for v in gen.versions

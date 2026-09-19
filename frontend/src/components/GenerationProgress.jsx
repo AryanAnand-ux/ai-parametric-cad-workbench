@@ -1,7 +1,7 @@
 import React from 'react';
 
 const STAGES = [
-  { id: 'rag_retrieval', label: 'Semantic Blueprint Retrieval', desc: 'ChromaDB vector match across 101 CAD templates' },
+  { id: 'rag_retrieval', label: 'Semantic Blueprint Retrieval', desc: 'ChromaDB vector match across 121 CAD templates' },
   { id: 'llm_generation', label: 'Parametric Code Synthesis', desc: 'build123d Python script generation via AI pipeline' },
   { id: 'ast_validation', label: 'AST Security & Sandbox Audit', desc: 'Syntax verification and security import validation' },
   { id: 'cad_execution', label: 'OpenCASCADE Kernel Compilation', desc: 'B-Rep solid modeling & tessellated mesh extraction' },
