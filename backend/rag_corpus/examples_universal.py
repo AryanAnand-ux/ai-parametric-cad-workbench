@@ -1323,9 +1323,8 @@ PARAMS = {
     "mug_height": 95.0,
     "wall_thickness": 4.0,
     "floor_thickness": 6.0,
-    "handle_width": 14.0,
-    "handle_thickness": 8.0,
-    "handle_extension": 32.0
+    "handle_radius": 25.0,
+    "handle_thickness": 6.0
 }
 import math
 from build123d import *
@@ -1334,14 +1333,13 @@ OD = PARAMS["mug_outer_dia"]
 H = PARAMS["mug_height"]
 WT = PARAMS["wall_thickness"]
 FT = PARAMS["floor_thickness"]
-HW = PARAMS["handle_width"]
+HR = PARAMS["handle_radius"]
 HT = PARAMS["handle_thickness"]
-HEX = PARAMS["handle_extension"]
 
 ID = OD - 2.0 * WT
 
 with BuildPart() as part:
-    # 1. Cup body
+    # 1. Main cylindrical mug body
     with Locations((0, 0, H / 2.0)):
         Cylinder(radius=OD / 2.0, height=H)
 
@@ -1350,17 +1348,13 @@ with BuildPart() as part:
     with Locations((0, 0, FT + cavity_h / 2.0 + 0.1)):
         Cylinder(radius=ID / 2.0, height=cavity_h + 0.2, mode=Mode.SUBTRACT)
 
-    # 3. Swept handle
-    hx_start = OD / 2.0 - 2.0
-    with BuildSketch(Plane.XZ) as h_sk:
-        with Locations((hx_start, H * 0.5)):
-            RectangleRounded(HT, HW, radius=2.0)
+    # 3. Ergonomic finger loop handle fused to outer wall
+    with Locations(Location((OD / 2.0 - 4.0, 0, H / 2.0), (0, 90, 0))):
+        Torus(major_radius=HR, minor_radius=HT)
 
-    with BuildLine(Plane.YZ) as h_path:
-        with Locations((0, H * 0.5)):
-            CenterArc(center=(0, 0), radius=HEX, start_angle=-80, arc_size=160)
-
-    sweep(sections=h_sk.sketch, path=h_path.line)
+    # 4. Clean subtractive re-pass inside cavity to ensure clear interior
+    with Locations((0, 0, FT + cavity_h / 2.0 + 0.1)):
+        Cylinder(radius=ID / 2.0, height=cavity_h + 0.2, mode=Mode.SUBTRACT)
 
 # Validation
 assert part.part is not None, "Build failed: part is None"

@@ -326,8 +326,9 @@ def _detect_cad_archetype(prompt: str) -> Optional[str]:
     if re.search(r"\b(gear|spur gear|pinion|sprocket|impeller|turbine|fan blade|rotor|blower|cog|timing pulley)\b", p):
         return (
             "[ARCHETYPE DIRECTIVE — RADIAL / GEAR / IMPELLER: This part has radial symmetry. "
-            "Build the central hub cylinder and pitch disc, then pattern teeth or vanes radially around the perimeter "
-            "using PolarLocations or a loop over num_teeth with Location((rx, ry, z), (0, 0, ang)). Include central keyed shaft bore.]"
+            "Build the root diameter base cylinder first. Pattern teeth radially: for i in range(num_teeth): "
+            "with Locations(Location((tx, ty, 0), (0, 0, ang_deg))): Box(tooth_h, tooth_w, face_width). "
+            "Add central hub cylinder and subtract central shaft bore with keyway. Avoid complex 3D fillets on every tooth edge.]"
         )
 
     if re.search(r"\b(pipe|elbow|tube|tubing|manifold|conduit|sweep|swept|exhaust)\b", p):
@@ -354,7 +355,7 @@ def _detect_cad_archetype(prompt: str) -> Optional[str]:
         return (
             "[ARCHETYPE DIRECTIVE — CONSUMER / ERGONOMIC: Ensure solid functional ergonomics. "
             "For phone stands: angled backrest plate, resting shelf, retaining lip, and cable slot. "
-            "For mugs: hollow cup body + swept ergonomic handle. "
+            "For mugs/cups: hollow cup body (outer cylinder minus inner cavity) + fused Torus handle (Torus(major_radius, minor_radius) rotated (0, 90, 0) at cup wall). "
             "For knobs: cylindrical grip + perimeter knurling ribs + pointer indicator + D-shaft bore.]"
         )
 
