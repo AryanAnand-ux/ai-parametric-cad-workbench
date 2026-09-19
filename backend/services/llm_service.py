@@ -299,6 +299,75 @@ def _call_gemini_web(prompt: str, system: str, model: str = None) -> str:
     return gemini_web_client.generate(prompt=prompt, system_instruction=system, model=model)
 
 
+def _detect_cad_archetype(prompt: str) -> Optional[str]:
+    """
+    Detects specific CAD archetypes in the user prompt and returns targeted engineering directives.
+    Ensures build123d uses the right geometric paradigm (e.g. revolve/stacking for shafts,
+    subtractive core for enclosures, polar arrays for gears, sweeps for piping).
+    """
+    p = prompt.lower()
+
+    if re.search(r"\b(stepped shaft|shaft|lathe|turned|pulley|sheave|flange|bushing|spindle|nozzle|bottle|vase|goblet|axle|journal)\b", p):
+        return (
+            "[ARCHETYPE DIRECTIVE — ROTATIONAL / AXISYMMETRIC PART: This is a rotational/turned component. "
+            "Construct using concentric stacked 3D primitives (Cylinder, Cone) along the Z axis, or revolve a 2D "
+            "half-cross-section on Plane.XZ around Axis.Z. DO NOT build this out of a flat 2D plate with arms. "
+            "Position keyways, circlip grooves, or bores along the central Z axis.]"
+        )
+
+    if re.search(r"\b(enclosure|electronics box|case|housing|chassis shell|container|project box|screw boss|sensor pod)\b", p):
+        return (
+            "[ARCHETYPE DIRECTIVE — ENCLOSURE / HOUSING: This is a thin-walled container/enclosure. "
+            "Construct the outer solid with RectangleRounded + extrude, hollow out the interior using "
+            "Box(mode=Mode.SUBTRACT) leaving uniform floor and wall thickness, and add corner screw mounting bosses "
+            "(solid Cylinder pillars from floor) with central blind pilot holes. Ensure bosses fuse into the floor.]"
+        )
+
+    if re.search(r"\b(gear|spur gear|pinion|sprocket|impeller|turbine|fan blade|rotor|blower|cog|timing pulley)\b", p):
+        return (
+            "[ARCHETYPE DIRECTIVE — RADIAL / GEAR / IMPELLER: This part has radial symmetry. "
+            "Build the central hub cylinder and pitch disc, then pattern teeth or vanes radially around the perimeter "
+            "using PolarLocations or a loop over num_teeth with Location((rx, ry, z), (0, 0, ang)). Include central keyed shaft bore.]"
+        )
+
+    if re.search(r"\b(pipe|elbow|tube|tubing|manifold|conduit|sweep|swept|exhaust)\b", p):
+        return (
+            "[ARCHETYPE DIRECTIVE — SWEPT TUBING / PIPING: Construct using a 2D cross-section sketch swept along a 3D "
+            "centerline path wire (BuildLine with CenterArc or lines). Attach mounting bolt flanges at inlet and outlet, "
+            "and sweep a matching inner circular bore with mode=Mode.SUBTRACT.]"
+        )
+
+    if re.search(r"\b(loft|transition|duct|hvac|square to round|funnel|airfoil)\b", p):
+        return (
+            "[ARCHETYPE DIRECTIVE — LOFTED TRANSITION: Construct using loft(sections=[sk_base.sketch, sk_top.sketch]) "
+            "across parallel planes (e.g. Plane.XY and Plane.XY.offset(H)). Create hollow fluid/airway passage using an inner subtractive loft.]"
+        )
+
+    if re.search(r"\b(bracket|l-bracket|angle bracket|gusset|stiffener|u-channel|c-channel|clevis|fork joint)\b", p):
+        return (
+            "[ARCHETYPE DIRECTIVE — STRUCTURAL BRACKET: Construct intersecting structural plates fused inside with BuildPart(). "
+            "Connect perpendicular walls with a triangular stiffening gusset rib (BuildSketch with Polygon + extrude). "
+            "Provide slotted fastener mounting holes for tolerance.]"
+        )
+
+    if re.search(r"\b(mug|cup|coffee mug|phone stand|tablet stand|desk stand|holder|knob|rotary knob|dial)\b", p):
+        return (
+            "[ARCHETYPE DIRECTIVE — CONSUMER / ERGONOMIC: Ensure solid functional ergonomics. "
+            "For phone stands: angled backrest plate, resting shelf, retaining lip, and cable slot. "
+            "For mugs: hollow cup body + swept ergonomic handle. "
+            "For knobs: cylindrical grip + perimeter knurling ribs + pointer indicator + D-shaft bore.]"
+        )
+
+    if re.search(r"\b(assembly|bolt and nut|fastener assembly|mechanism|multi-part|two-part|2-part)\b", p):
+        return (
+            "[ARCHETYPE DIRECTIVE — MECHANICAL ASSEMBLY: Set design_mode='assembly' and provide components list. "
+            "Maintain realistic clearances between mating components and validate that all components exist in the "
+            "final assembly without asserting len(solids) == 1.]"
+        )
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Main LLM Service Class
 # ---------------------------------------------------------------------------
@@ -403,6 +472,11 @@ class LLMService:
                 f"`build123d` (OpenCASCADE). You MUST output 100% valid `build123d` Python code following the 15 rules. "
                 f"DO NOT import FreeCAD, Part, or cadquery.]"
             )
+
+        # Inject targeted archetype directive if recognized
+        archetype_directive = _detect_cad_archetype(user_prompt)
+        if archetype_directive:
+            effective_prompt = f"{effective_prompt}\n\n{archetype_directive}"
 
         payload, model_used = cls._call_with_fallback(effective_prompt, system=system)
         logger.info(

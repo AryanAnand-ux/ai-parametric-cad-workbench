@@ -159,6 +159,55 @@ When plate geometry extends along Z from `0.0` to `T` (`plate_thickness`):
   Center `Cone(bottom_radius=hole_r, top_radius=head_r, height=cs_depth)` at `Z = T - cs_depth / 2.0`.
   *Wide head radius sits flush at \(Z = T\); small hole radius sits at \(Z = T - cs\_depth\).*
 
+### Rule 4d — The 8 Universal CAD Archetype Recipes (Generate Any 3D Geometry)
+When the user requests any specific class of part, follow the corresponding architectural recipe:
+
+#### Archetype 1: Rotational & Axisymmetric Parts (Shafts, Pulleys, Bushings, Flanges, Bottles, Vases)
+- **Construction Method:** Stack concentric 3D primitives (`Cylinder` and `Cone`) along Z with shared centerline, OR build a 2D half-cross-section sketch on `Plane.XZ` and `revolve(axis=Axis.Z)`.
+- **Stepped Shafts:** Create stepped cylinders along Z (`with Locations((0,0,z_mid)): Cylinder(radius=D/2, height=L)`). Cut keyway via `Box(KW, KD, KL, mode=Mode.SUBTRACT)` positioned at outer radius. Cut circlip annular groove or center bores.
+- **Pulleys:** Rim cylinder + central hub + V-belt groove cuts via `Cone(bottom_radius=OD/2-GD, top_radius=OD/2+1, height=GW, mode=Mode.SUBTRACT)` + keyed through-bore.
+- **Hollow Containers/Vases:** Concentric cylinders and cones forming base, bulging belly, contracting neck, and flared lip + subtractive inner cavity through-bore leaving `wall_thickness`.
+
+#### Archetype 2: Enclosures & Hollow Housings (Electronics Boxes, Chassis Shells, Sensor Pods)
+- **Outer Shell:** `RectangleRounded(L, W, radius=CR)` extruded to height `H`.
+- **Hollow Cavity:** Subtractive inner box `Box(L - 2*T, W - 2*T, H - T, mode=Mode.SUBTRACT)` centered at `Z = T + (H - T)/2.0` leaving uniform floor thickness `T`.
+- **Mounting Screw Bosses:** Solid `Cylinder` pillars at corner insets (`with GridLocations(...): Cylinder(radius=B_OD/2, height=B_H)`), plus central blind pilot screw holes (`Cylinder(radius=B_ID/2, height=B_H, mode=Mode.SUBTRACT)`).
+- **Lid Rebate/Lip:** Shallow subtractive recess around upper perimeter for flush lid fit.
+
+#### Archetype 3: Gears, Sprockets & Radial Power Transmission
+- **Pitch Blank:** `Cylinder(radius=root_r, height=face_width)`.
+- **Teeth Array:** In a loop for `i` in range `num_teeth`, compute angle `ang = i * (360/N)`, position tooth wedge at `tooth_mid_r * cos(ang), tooth_mid_r * sin(ang)` with `Location(..., (0, 0, ang))`: `Box(tooth_h + 1.0, tooth_thickness, face_width)`.
+- **Hub & Bore:** Add drive hub cylinder + keyed center through-bore + web lightening pockets via `PolarLocations`.
+
+#### Archetype 4: Swept Tubing, Piping & Conduit (Elbows, Curved Manifolds)
+- **Cross-Section:** `Circle(radius=OD/2)` on `Plane.XY`.
+- **Path:** `BuildLine(Plane.XZ)` with `CenterArc(center=(BR, 0), radius=BR, start_angle=180, arc_size=90)` or line sequence.
+- **Body:** `sweep(sections=pipe_sk.sketch, path=path.line)`.
+- **Flanges:** Bolt-circle discs at inlet and outlet with `PolarLocations` fastener clearance holes.
+- **Internal Bore:** Sweep a matching inner circle (`radius=ID/2`) along the same path with `mode=Mode.SUBTRACT`.
+
+#### Archetype 5: Lofted Transitions (Ducts, Adapters, Funnels, Airfoils)
+- **Base Sketch:** e.g. `Rectangle(BL, BW)` on `Plane.XY`.
+- **Top Sketch:** e.g. `Circle(radius=TD/2)` on `Plane.XY.offset(H)`.
+- **Transition Body:** `loft(sections=[sk_base.sketch, sk_top.sketch])`.
+- **Hollow Airway:** Inner loft using smaller concentric sketches with `mode=Mode.SUBTRACT`.
+- **Mounting Flanges:** Add flat flange plates with fastener hole patterns.
+
+#### Archetype 6: Gusseted Structural Brackets & Formed Channels
+- **Angle Bracket:** Horizontal base plate + vertical upright plate. Connect with triangular stiffening gusset rib: `with BuildSketch(Plane.XZ): Polygon([(0,0), (gw,0), (0,gh)])` extruded to `gusset_thickness`.
+- **Slotted Fasteners:** Slotted holes via `Box(slot_len, slot_dia, T*2, mode=Mode.SUBTRACT)` to allow mechanical alignment.
+- **Formed Channels:** Bottom web plate + dual parallel vertical side flanges + hole matrix.
+
+#### Archetype 7: Consumer & Ergonomic Hardware (Phone Stands, Drinkware, Knurled Knobs)
+- **Phone Stand:** Desktop base foot + angled cradle backrest plate (rotated via `Location((mid_x, 0, mid_z), (0, -angle, 0))`) + resting shelf + front retaining lip + rear support truss + central cable pass-through slot.
+- **Drinkware:** Hollow cup cylinder + swept curved C-handle on side via `sweep()` on arc path.
+- **Control Knob:** Cylindrical grip body + axial perimeter knurling ribs (`Box` arrayed around circumference) + indicator line + D-shaft keyed bore.
+
+#### Archetype 8: Multi-Body Mechanical Assemblies (Bolts & Nuts, Hinges, Mechanisms)
+- Set `"design_mode": "assembly"` and provide `"components": ["part_a", "part_b"]`.
+- Maintain realistic mechanical clearances (e.g. `nut_bore = bolt_dia + 0.3`).
+- Validate assembly with `assert len(part.part.solids()) >= 2`.
+
 ### Rule 5 — Use mirror() Instead of Manual Sign Flipping
 BAD (reverses polygon winding, creates invalid geometry):
 ```python
@@ -753,6 +802,21 @@ E. **Dimension / Logic Error** — Part builds but dimensions are wrong vs. user
 - Recalculate motor positions: for a square frame of side S, motor centres at ±(S/2 - pad_r)
 - Verify bounding box assertions match PARAMS values
 - If `internal_fillet_radius` is defined in PARAMS but never used, either apply it or remove from PARAMS
+
+**Category F — Revolved & Rotational Parts:**
+- For revolve: 2D sketch profile must NOT cross the revolution axis (all points must have X >= 0 on Plane.XZ when revolving around Axis.Z).
+- For concentric cylinders: all cylinders must share the exact same axis (Z) and their heights must chain contiguously: Section 1 (Z=0 to L1), Section 2 (Z=L1 to L1+L2), etc.
+- Keyway cuts must be positioned at outer radius: `with Locations((0, D/2 - KD/2, z_mid)): Box(KW, KD, KL, mode=Mode.SUBTRACT)`.
+
+**Category G — Enclosures & Hollow Shells:**
+- Cavity cuts (`mode=Mode.SUBTRACT`) must leave uniform floor thickness T: center cutting box at `Z = T + cavity_h / 2.0`.
+- Screw boss pillars must be added inside the cavity (`mode=Mode.ADD`) before subtracting pilot screw holes.
+- Never assert `solids() == 0` or leave floating bosses unconnected to the floor.
+
+**Category H — Sweeps & Lofts:**
+- For `sweep()`: ensure the cross-section sketch is centered at the start of the path curve.
+- For `loft()`: ensure both sketches are closed profiles on distinct parallel offset planes (e.g. `Plane.XY` and `Plane.XY.offset(H)`).
+- For hollow passages: subtract a secondary inner loft or swept bore with smaller radius.
 
 ### 3. STRICT CAD CODE RULES TO ENFORCE DURING CORRECTION
 - [ ] ALL geometry creation and modification MUST occur inside the active `with BuildPart() as part:` context.

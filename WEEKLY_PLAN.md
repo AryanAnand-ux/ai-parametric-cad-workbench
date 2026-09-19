@@ -270,7 +270,7 @@ This demonstrates the **dual-output schema** is a genuine innovation, not just a
 | Slider recomputation time | < 500ms | < 220ms (fast_preview enabled) | ✅ Target Met |
 | End-to-end generation time | < 20s | 17.1s avg (Gemini 2.0 Flash) | ✅ Target Met |
 | RAG retrieval precision@3 | ≥ 0.75 | 0.76 avg cosine similarity | ✅ Target Met |
-| Supported part types in RAG corpus | ≥ 100 | 100 parts (W4+W5+W8+Eng+Complex) | 🎯 Target Met |
+| Supported part types in RAG corpus | ≥ 100 | 121 parts (W4+W5+W8+Eng+Complex+Universal) | 🎯 Exceeded |
 | Self-correction recovery rate | ≥ 50% | 50.0% (2/4 recovered) | ✅ Target Met |
 
 ---
