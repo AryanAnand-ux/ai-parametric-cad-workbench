@@ -124,6 +124,32 @@ body {
   flex-shrink: 0;
 }
 
+.header-brand-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  text-decoration: none;
+  user-select: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  outline: none;
+  border-radius: 6px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+
+.header-brand-link:hover {
+  opacity: 0.92;
+}
+
+.header-brand-link:hover .header-logo-icon {
+  transform: scale(1.05);
+}
+
+.header-brand-link:focus-visible {
+  box-shadow: 0 0 0 2px rgba(255, 253, 226, 0.4);
+}
+
 .header-logo-icon {
   width: 32px;
   height: 32px;
@@ -136,6 +162,7 @@ body {
   justify-content: center;
   color: #474040;
   flex-shrink: 0;
+  transition: transform 0.18s ease;
 }
 
 .header-brand-info {
