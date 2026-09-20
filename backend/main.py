@@ -9,8 +9,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from collections import defaultdict
-from typing import Optional
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Request, Depends
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Request, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from dotenv import load_dotenv
@@ -48,13 +47,15 @@ _reserved_modify_ids: set[str] = set()
 
 
 class SimpleRateLimiter:
-    """Sliding-window per-IP rate limiter."""
+    """Sliding-window per-IP rate limiter with header info support."""
     def __init__(self, requests_per_minute: int):
         self.rpm = requests_per_minute
         self.history = defaultdict(list)
         self.lock = asyncio.Lock()
 
-    async def check(self, client_ip: str):
+    async def check(self, client_ip: str) -> tuple[int, float]:
+        """Check rate limit. Returns (remaining, oldest_reset_in_seconds).
+        Raises HTTP 429 with Retry-After header if limit exceeded."""
         now = time.time()
         cutoff = now - 60.0
         async with self.lock:
@@ -66,17 +67,29 @@ class SimpleRateLimiter:
                 )
             timestamps = [t for t in self.history[client_ip] if t > cutoff]
             if len(timestamps) >= self.rpm:
+                # Time until oldest request falls out of the window
+                retry_after = max(1, int(timestamps[0] + 60 - now))
                 raise HTTPException(
                     status_code=429,
-                    detail=f"Rate limit exceeded. Maximum {self.rpm} requests per minute allowed."
+                    detail=f"Rate limit exceeded. Maximum {self.rpm} requests per minute allowed.",
+                    headers={
+                        "Retry-After": str(retry_after),
+                        "X-RateLimit-Limit": str(self.rpm),
+                        "X-RateLimit-Remaining": "0",
+                        "X-RateLimit-Reset": str(retry_after),
+                    },
                 )
             timestamps.append(now)
             self.history[client_ip] = timestamps
+            remaining = self.rpm - len(timestamps)
+            reset_in = max(1, int(timestamps[0] + 60 - now)) if timestamps else 60
+            return remaining, reset_in
 
 
 generate_limiter = SimpleRateLimiter(requests_per_minute=10)
 modify_limiter = SimpleRateLimiter(requests_per_minute=10)
 recompute_limiter = SimpleRateLimiter(requests_per_minute=40)
+
 
 
 def require_admin_token(provided_token: str | None) -> None:
@@ -228,6 +241,7 @@ async def generate_part(
     payload: GenerateRequest,
     background_tasks: BackgroundTasks,
     request: Request,
+    response: Response = None,
     current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -243,7 +257,11 @@ async def generate_part(
     6. Persists to database if user is authenticated.
     """
     client_ip = request.client.host if request.client else "unknown"
-    await generate_limiter.check(client_ip)
+    remaining, reset_in = await generate_limiter.check(client_ip)
+    if response:
+        response.headers["X-RateLimit-Limit"] = str(generate_limiter.rpm)
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        response.headers["X-RateLimit-Reset"] = str(reset_in)
 
     script_id = f"part_{uuid.uuid4().hex[:8]}"
     self_correction_attempts = 0
@@ -514,14 +532,18 @@ async def generate_part_stream(
 # ---------------------------------------------------------------------------
 
 @app.post("/api/recompute", response_model=RecomputeResponse)
-async def recompute_part(payload: RecomputeRequest, request: Request = None):
+async def recompute_part(payload: RecomputeRequest, request: Request = None, response: Response = None):
     """
     Fast Parametric Recomputation (<200ms target).
     Injects updated slider values into the PARAMS block and re-executes — NO LLM call.
     """
     if request:
         client_ip = request.client.host if request.client else "unknown"
-        await recompute_limiter.check(client_ip)
+        remaining, reset_in = await recompute_limiter.check(client_ip)
+        if response:
+            response.headers["X-RateLimit-Limit"] = str(recompute_limiter.rpm)
+            response.headers["X-RateLimit-Remaining"] = str(remaining)
+            response.headers["X-RateLimit-Reset"] = str(reset_in)
 
     t0 = time.perf_counter()
     execution_id = f"{payload.script_id}_recomputed_{uuid.uuid4().hex[:10]}"
@@ -700,6 +722,7 @@ async def modify_part(
     payload: ModifyRequest,
     background_tasks: BackgroundTasks,
     request: Request,
+    response: Response = None,
     current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -716,7 +739,11 @@ async def modify_part(
     4. Returns updated STL mesh_url, STEP step_url, parameters, and mesh metrics.
     """
     client_ip = request.client.host if request.client else "unknown"
-    await modify_limiter.check(client_ip)
+    remaining, reset_in = await modify_limiter.check(client_ip)
+    if response:
+        response.headers["X-RateLimit-Limit"] = str(modify_limiter.rpm)
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        response.headers["X-RateLimit-Reset"] = str(reset_in)
 
     # Generate a versioned script_id to preserve original
     base_id = re.sub(r'_v\d+$', '', payload.script_id)   # Strip existing _v1, _v2 suffix

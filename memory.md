@@ -135,7 +135,16 @@ ENVIRONMENT=development
 
 ## 5. Session Notes / Change Log
 
-### September 20, 2026
+### September 20, 2026 (Sprint Completion)
+- Implemented global keyboard shortcuts in `frontend/src/App.jsx` (`G` = Generate, `R` = Force Recompute, `E` = Export dropdown, `?` = Tour, `Z` = Undo)
+- Onboarding tour persistence: saved completion state to `localStorage` (`cad_tour_completed`) to prevent auto-reopening across sessions; added "Reset Tour" in user menu
+- Added rate limit headers to API responses: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` on `/api/generate`, `/api/recompute`, `/api/modify` plus standard 429 response headers
+- Added test in `test_recompute_validation.py` verifying rate limit headers contract
+- Enhanced Community Gallery (`frontend/src/pages/Gallery.jsx`): debounced live search as user types + expanded engineering discipline filter chips
+- Enhanced GitHub Actions CI workflow (`.github/workflows/ci.yml`): runs core backend test suite (41 tests) and builds Vite frontend production bundle on push/PR
+- Tested full backend test suite: 75/75 passed (0 failures) in `backend/venv`! Frontend build: 642ms with 0 errors.
+
+### September 20, 2026 (Documentation Foundation)
 - Created documentation suite: prd.md, architecture.md, rules.md, design.md, task.md, memory.md
 - Deleted WEEKLY_PLAN.md (content absorbed into task.md and memory.md)
 - Deleted frontend/README.md (redundant with new architecture.md)

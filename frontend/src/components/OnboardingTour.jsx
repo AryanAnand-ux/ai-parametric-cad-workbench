@@ -51,10 +51,15 @@ const TOUR_STEPS = [
 export default function OnboardingTour({ isOpen, onClose }) {
   const [currentStep, setCurrentStep] = useState(0);
 
+  const handleDismiss = () => {
+    localStorage.setItem('cad_tour_completed', '1');
+    onClose();
+  };
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (!isOpen) return;
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') handleDismiss();
       if (e.key === 'ArrowRight') handleNext();
       if (e.key === 'ArrowLeft') handlePrev();
     };
@@ -70,6 +75,8 @@ export default function OnboardingTour({ isOpen, onClose }) {
     if (currentStep < TOUR_STEPS.length - 1) {
       setCurrentStep((s) => s + 1);
     } else {
+      // Mark tour as completed so it doesn't auto-show next session
+      localStorage.setItem('cad_tour_completed', '1');
       onClose();
     }
   };
@@ -81,7 +88,7 @@ export default function OnboardingTour({ isOpen, onClose }) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={handleDismiss}>
       <div
         className="modal-card"
         style={{ maxWidth: '520px' }}
@@ -101,7 +108,7 @@ export default function OnboardingTour({ isOpen, onClose }) {
           <button
             type="button"
             className="modal-close-btn"
-            onClick={onClose}
+            onClick={handleDismiss}
             aria-label="Skip tour"
           >
             ✕

@@ -11,7 +11,7 @@
 
 ## In Progress
 
-- [ ] Documentation suite — prd.md, architecture.md, rules.md, design.md, task.md, memory.md (in progress)
+- [ ] Production deployment readiness & final polish
 
 ---
 
@@ -22,18 +22,13 @@
 - [ ] Add Alembic migrations (replace `create_all` on startup)
 - [ ] Add streaming SSE progress for generation pipeline stages (RAG → LLM → Build → Export)
 - [ ] Implement model thumbnail generation (render 3D screenshot server-side)
-- [ ] Add rate limit headers to API responses (`X-RateLimit-Remaining`, `Retry-After`)
 - [ ] `test_universal_archetypes.py` — run all 20 archetype prompts against live LLM in CI-optional mode
 
 ### Frontend
-- [ ] Gallery page: add search/filter by discipline, material, complexity
 - [ ] Parameter sidebar: add parameter grouping by category (dimensions, features, tolerances)
-- [ ] Add keyboard shortcuts (G = Generate, R = Recompute, E = Export, ? = Tour)
-- [ ] Onboarding tour: persist completion state in `localStorage` so it doesn't re-show
 - [ ] Mobile responsive pass for workbench (sidebar collapse, toolbar reflow)
 
 ### DevOps
-- [ ] Add GitHub Actions workflow for pytest on every PR (not just weekly benchmark)
 - [ ] Add Dockerfile healthcheck for the backend container
 - [ ] Set up Dependabot for Python + npm dependency updates
 
@@ -78,7 +73,13 @@
 - [x] Navbar refactor — compact segmented controls, user dropdown, unified status indicator
 - [x] Logo → home navigation — brand logo routes to landing page via `onGoHome` callback
 - [x] CI/CD — 33/33 pytest tests passing, Vite production build verified
-- [x] Documentation suite — all 6 core .md files created (this task)
+- [x] Documentation suite — all 6 core .md files created and kept in live sync
+- [x] Keyboard shortcuts — G (Generate), R (Force Recompute), E (Export), ? (Tour), Z (Undo)
+- [x] Tour persistence — localStorage caching of completion flag across sessions + user menu reset
+- [x] Full-Stack CI/CD — GitHub Actions workflow runs 41 pytest tests + Vite frontend production build on push/PR
+- [x] Rate limit headers — `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` on API responses + 429 detail
+- [x] Gallery live search & discipline chips — debounced client-side search + extended tags filter
+
 
 ---
 

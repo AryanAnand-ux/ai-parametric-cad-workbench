@@ -60,8 +60,10 @@ An LLM-driven pipeline converts a natural language description into a parametric
 
 ### 3.5 Public Gallery
 - Users can share models to a public community gallery
-- Gallery browse page with model cards (name, description, thumbnail)
-- Direct link sharing with unique model IDs
+- Gallery browse page with model cards (name, description, 3D solid badge, dimensions, watertight indicator)
+- Instant debounced live search as user types
+- Engineering discipline filter chips (bracket, enclosure, heatsink, gear, shaft, pulley, flange, manifold, aerospace, robotics, thermal)
+- Forking models directly into user's active workspace and like counters
 
 ### 3.6 User Authentication
 - JWT-based auth (register / login / guest mode)
@@ -70,7 +72,16 @@ An LLM-driven pipeline converts a natural language description into a parametric
 
 ### 3.7 Onboarding Tour
 - Step-by-step interactive guide for first-time users
-- Highlights: prompt bar, parameter sliders, viewport controls, export
+- Highlights: prompt bar, parameter sliders, viewport controls, conversational modify, export
+- Session persistence via `localStorage` (`cad_tour_completed`) to prevent repeated popups across sessions
+- Reset Tour option available in user account dropdown menu and via shortcut
+
+### 3.8 Power-User Keyboard Shortcuts
+- `G` — Trigger CAD generation from active prompt
+- `R` — Force recompute geometry with current slider parameters (<200ms)
+- `E` — Focus / toggle manufacturing export dropdown (STEP / STL)
+- `?` — Open the interactive Studio Onboarding Tour modal
+- `Z` — Undo to previous model topology snapshot
 
 ---
 
@@ -80,12 +91,14 @@ An LLM-driven pipeline converts a natural language description into a parametric
 | Metric | Target |
 |--------|--------|
 | Generation latency (P50) | 10 seconds |
-| Recompute latency (P50) | 3 seconds |
+| Recompute latency (P50) | <200 milliseconds |
 | 3D mesh load time | 2 seconds |
 | Frontend first paint | 1.5 seconds |
 
-### 4.2 Reliability
+### 4.2 Reliability & Rate Limiting
 - Rate limiter: 10 req/min generate, 10 req/min modify, 40 req/min recompute (per IP)
+- Response headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` returned on endpoints
+- Exceeded limits return HTTP 429 with informative detail and standard `Retry-After` header
 - Self-correction loop: up to 3 retries on execution error
 - Artifact cleanup: temp files removed after configurable TTL
 - Backend availability: 99% uptime target (single-node)

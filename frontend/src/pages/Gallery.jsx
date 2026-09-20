@@ -7,7 +7,10 @@ const SORT_OPTIONS = [
   { value: 'most_forked', label: 'Most Forked' },
 ];
 
-const FEATURED_TAGS = ['bracket', 'enclosure', 'heatsink', 'gear', 'housing', 'flange', 'manifold', 'fixture'];
+const FEATURED_TAGS = [
+  'bracket', 'enclosure', 'heatsink', 'gear', 'shaft', 'pulley', 'flange',
+  'manifold', 'aerospace', 'robotics', 'thermal', 'fixture'
+];
 
 function DesignCard({ item, onFork, onLike, onLoad }) {
   const [liked, setLiked] = useState(false);
@@ -233,9 +236,18 @@ export default function Gallery({ onGoToApp }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Live search debounce — search automatically as user types
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
   const handleSearch = (e) => {
     e.preventDefault();
-    setSearch(searchInput);
+    setSearch(searchInput.trim());
     setPage(1);
   };
 

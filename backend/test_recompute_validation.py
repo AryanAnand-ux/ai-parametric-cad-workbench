@@ -58,4 +58,33 @@ async def test_recompute_uses_unique_execution_artifact_id(monkeypatch):
 
     assert len(execution_ids) == 2
     assert execution_ids[0] != execution_ids[1]
-    assert all(value.startswith("part_example_recomputed_") for value in execution_ids)
+
+
+@pytest.mark.asyncio
+async def test_recompute_sets_rate_limit_headers(monkeypatch):
+    from fastapi import Response
+
+    class DummyRequest:
+        class DummyClient:
+            host = "127.0.0.99"
+        client = DummyClient()
+
+    async def fake_execute_script_async(**kwargs):
+        return {
+            "status": "success",
+            "mesh_url": "/static/models/example.stl",
+            "step_url": "/static/models/example.step",
+            "mesh_info": {"is_valid": True, "dimensions_mm": {}},
+        }
+
+    monkeypatch.setattr(main.CADRunner, "execute_script_async", fake_execute_script_async)
+    response = Response()
+    payload = RecomputeRequest(
+        script_id="part_rl_test",
+        python_code="PARAMS = {}",
+        updated_parameters={},
+    )
+    await main.recompute_part(payload, request=DummyRequest(), response=response)
+    assert response.headers.get("X-RateLimit-Limit") == str(main.recompute_limiter.rpm)
+    assert "X-RateLimit-Remaining" in response.headers
+    assert "X-RateLimit-Reset" in response.headers

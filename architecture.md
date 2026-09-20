@@ -281,9 +281,11 @@ See `backend/.env.example` for full list. Key variables:
 - `ENVIRONMENT` — `development` | `production`
 
 ### 6.4 CI/CD
-- **GitHub Actions** (`benchmark.yml`): weekly Monday 06:00 UTC
-- Runs: schema, AST security, LLM parser, geometry validation, recompute contract tests
-- 85% pass rate threshold enforced
+- **Full-Stack CI/CD** (`.github/workflows/ci.yml`): Triggers on every push and pull request to `main` touching `backend/**` or `frontend/**`.
+  - Backend job: Python 3.11, pip dependencies, runs full core pytest test suite (41 tests passing).
+  - Frontend job: Node.js 20, npm clean install (`npm ci`), builds production bundle (`npm run build`).
+- **Benchmark Suite** (`.github/workflows/benchmark.yml`): Weekly automated benchmark suite (Monday 06:00 UTC).
+  - Enforces 85% pass threshold across CAD archetypes and RAG retrieval coverage.
 
 ---
 

@@ -195,17 +195,22 @@ export default function App({ onGoHome, onGoToGallery }) {
   const scrollTimerRef = useRef(null);
   const recomputeSequenceRef = useRef(0);
 
-  // Health check on mount + debounce timer cleanup
+  // Health check on mount + debounce timer cleanup + tour persistence
   useEffect(() => {
     healthCheck()
       .then((data) => setBackendStatus(data.status === 'online' ? 'online' : 'offline'))
       .catch(() => setBackendStatus('offline'));
 
+    // Don't auto-show tour if user already completed it
+    if (localStorage.getItem('cad_tour_completed') === '1') {
+      setShowOnboarding(false);
+    }
+
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
     };
-  }, [setBackendStatus]);
+  }, [setBackendStatus, setShowOnboarding]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -232,6 +237,47 @@ export default function App({ onGoHome, onGoToGallery }) {
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, [showCodeModal, setShowCodeModal]);
+
+  // Global keyboard shortcuts — only fire when no input/textarea/select is focused
+  useEffect(() => {
+    const handleKey = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      switch (e.key) {
+        case 'g': case 'G':
+          e.preventDefault();
+          handleGenerate();
+          break;
+        case 'r': case 'R':
+          if (scriptId && pythonCode && !recomputing) {
+            e.preventDefault();
+            handleForceRecompute();
+          }
+          break;
+        case 'e': case 'E':
+          if (meshUrl) {
+            e.preventDefault();
+            toggleDropdown('export');
+          }
+          break;
+        case '?':
+          e.preventDefault();
+          setShowOnboarding(true);
+          break;
+        case 'z': case 'Z':
+          if (modelHistory.length > 0) {
+            e.preventDefault();
+            popSnapshot();
+          }
+          break;
+        default:
+          break;
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [scriptId, pythonCode, recomputing, meshUrl, modelHistory, handleGenerate, popSnapshot, setShowOnboarding, toggleDropdown]);
 
   // Submit prompt -> /api/generate/stream with fallback to /api/generate
   const handleGenerate = async (overridePrompt) => {
@@ -416,6 +462,34 @@ export default function App({ onGoHome, onGoToGallery }) {
       const detail = err.response?.data?.detail;
       const message = typeof detail === 'string' ? detail : (detail?.error || err.message || 'Reset recomputation failed.');
       setError(`Reset error: ${message}`);
+    } finally {
+      if (requestSequence === recomputeSequenceRef.current) setRecomputing(false);
+    }
+  };
+
+  // Recompute with current slider values immediately (Shortcut: R)
+  const handleForceRecompute = async () => {
+    if (!scriptId || !pythonCode || recomputing) return;
+    const requestSequence = ++recomputeSequenceRef.current;
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    setRecomputing(true);
+    try {
+      const res = await recomputePart(
+        scriptId,
+        pythonCode,
+        paramValuesRef.current,
+        parameters,
+        designMode,
+        components,
+      );
+      if (requestSequence !== recomputeSequenceRef.current) return;
+      setRecomputeSuccess(res);
+    } catch (err) {
+      if (requestSequence !== recomputeSequenceRef.current) return;
+      console.error('[Force recompute error]', err);
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === 'string' ? detail : (detail?.error || err.message || 'Recomputation failed.');
+      setError(`Recomputation error: ${msg}`);
     } finally {
       if (requestSequence === recomputeSequenceRef.current) setRecomputing(false);
     }
@@ -622,9 +696,13 @@ export default function App({ onGoHome, onGoToGallery }) {
                   <button
                     type="button"
                     className="vt-dropdown-item"
-                    onClick={() => { setShowOnboarding(true); setUserMenuOpen(false); }}
+                    onClick={() => {
+                      localStorage.removeItem('cad_tour_completed');
+                      setShowOnboarding(true);
+                      setUserMenuOpen(false);
+                    }}
                   >
-                    <span>💡 Studio Tour</span>
+                    <span>💡 Reset Tour</span>
                   </button>
                   <div className="vt-dropdown-sep" />
                   <button
