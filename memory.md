@@ -139,6 +139,8 @@ ENVIRONMENT=development
 - Created documentation suite: prd.md, architecture.md, rules.md, design.md, task.md, memory.md
 - Deleted WEEKLY_PLAN.md (content absorbed into task.md and memory.md)
 - Deleted frontend/README.md (redundant with new architecture.md)
+- Deleted docs/review/ folder (11 weekly reports — historical content preserved in git history)
+- Added mandatory live-update rule to rules.md §6.2: every code/design change must update the relevant doc file in the same commit
 
 ### September 19, 2026
 - Refactored workbench navbar: compact segmented controls, user dropdown, unified status indicator

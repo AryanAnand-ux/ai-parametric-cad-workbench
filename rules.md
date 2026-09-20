@@ -125,15 +125,39 @@ This document defines the mandatory coding conventions, architecture rules, and 
 
 ## 6. Documentation Rules
 
+### 6.1 File Ownership
 - `prd.md` — Product requirements (what & why)
 - `architecture.md` — System design (how it's built)
 - `rules.md` — This file (coding standards)
 - `design.md` — UI/UX design system (colors, typography, components)
 - `task.md` — Active development tasks and sprint backlog
 - `memory.md` — Project decisions, learnings, and session notes
-- `README.md` — Public-facing quickstart (keep concise, link to docs/)
-- `docs/review/` — Weekly progress reports (do not modify historical weeks)
+- `README.md` — Public-facing quickstart (keep concise, link to the above)
 - **Delete** any ad-hoc markdown files after their content is incorporated into the above
+
+### 6.2 Mandatory Live-Update Rule (CRITICAL)
+
+**Every code or design change MUST be reflected in the relevant documentation file(s) in the same commit.** This is non-negotiable for both human developers and AI coding agents.
+
+| What changed | Which doc(s) to update |
+|---|---|
+| New API endpoint / request schema | `prd.md` (API contracts) + `architecture.md` (data flow) |
+| New service, module, or file | `architecture.md` (directory structure + relevant section) |
+| New component or style | `design.md` (components or color/typography section) |
+| New coding convention or constraint | `rules.md` (relevant section) |
+| New feature or NFR change | `prd.md` (features or NFR table) |
+| Bug fixed / decision made | `memory.md` (known issues or session notes) |
+| Task completed | `task.md` (move item from backlog to completed) |
+| Task added | `task.md` (add item to appropriate backlog tier) |
+| Environment variable added | `memory.md` (environment setup section) + `backend/.env.example` |
+| Dependency added/removed | `architecture.md` (tech stack table) |
+
+**Checklist before every commit:**
+- [ ] Did you add/change an API? → Update `architecture.md` + `prd.md`
+- [ ] Did you add/change UI or styles? → Update `design.md`
+- [ ] Did you finish a task? → Update `task.md`
+- [ ] Did you make a significant decision or fix a tricky bug? → Update `memory.md`
+- [ ] Did you change how the system is structured? → Update `architecture.md`
 
 ---
 
