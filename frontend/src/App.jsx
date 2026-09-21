@@ -238,46 +238,6 @@ export default function App({ onGoHome, onGoToGallery }) {
     return () => document.removeEventListener('keydown', handleEscape);
   }, [showCodeModal, setShowCodeModal]);
 
-  // Global keyboard shortcuts — only fire when no input/textarea/select is focused
-  useEffect(() => {
-    const handleKey = (e) => {
-      const tag = document.activeElement?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      switch (e.key) {
-        case 'g': case 'G':
-          e.preventDefault();
-          handleGenerate();
-          break;
-        case 'r': case 'R':
-          if (scriptId && pythonCode && !recomputing) {
-            e.preventDefault();
-            handleForceRecompute();
-          }
-          break;
-        case 'e': case 'E':
-          if (meshUrl) {
-            e.preventDefault();
-            toggleDropdown('export');
-          }
-          break;
-        case '?':
-          e.preventDefault();
-          setShowOnboarding(true);
-          break;
-        case 'z': case 'Z':
-          if (modelHistory.length > 0) {
-            e.preventDefault();
-            popSnapshot();
-          }
-          break;
-        default:
-          break;
-      }
-    };
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [scriptId, pythonCode, recomputing, meshUrl, modelHistory, handleGenerate, popSnapshot, setShowOnboarding, toggleDropdown]);
 
   // Submit prompt -> /api/generate/stream with fallback to /api/generate
   const handleGenerate = async (overridePrompt) => {
@@ -499,6 +459,47 @@ export default function App({ onGoHome, onGoToGallery }) {
     setActiveCamView(view);
     viewerRef.current?.setCameraView(view);
   };
+
+  // Global keyboard shortcuts — only fire when no input/textarea/select is focused
+  useEffect(() => {
+    const handleKey = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      switch (e.key) {
+        case 'g': case 'G':
+          e.preventDefault();
+          handleGenerate();
+          break;
+        case 'r': case 'R':
+          if (scriptId && pythonCode && !recomputing) {
+            e.preventDefault();
+            handleForceRecompute();
+          }
+          break;
+        case 'e': case 'E':
+          if (meshUrl) {
+            e.preventDefault();
+            toggleDropdown('export');
+          }
+          break;
+        case '?':
+          e.preventDefault();
+          setShowOnboarding(true);
+          break;
+        case 'z': case 'Z':
+          if (modelHistory.length > 0) {
+            e.preventDefault();
+            popSnapshot();
+          }
+          break;
+        default:
+          break;
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [scriptId, pythonCode, recomputing, meshUrl, modelHistory, handleGenerate, handleForceRecompute, popSnapshot, setShowOnboarding]);
 
   return (
     <div className={`app-shell${sidebarOpen ? '' : ' sidebar-collapsed'}`}>

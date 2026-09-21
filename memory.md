@@ -135,6 +135,10 @@ ENVIRONMENT=development
 
 ## 5. Session Notes / Change Log
 
+### September 21, 2026
+- Fixed TDZ `ReferenceError: Cannot access 'handleGenerate' before initialization` in `frontend/src/App.jsx` by relocating the keyboard shortcuts `useEffect` after all handler definitions; verified `http://localhost:5173/#app` loads cleanly.
+- Fixed `NameError: name 'Optional' is not defined` in `backend/main.py` by restoring `from typing import Optional, List, Dict, Any` import, resolving the GitHub Actions CI collection failure on Python 3.11.
+
 ### September 20, 2026 (Sprint Completion)
 - Implemented global keyboard shortcuts in `frontend/src/App.jsx` (`G` = Generate, `R` = Force Recompute, `E` = Export dropdown, `?` = Tour, `Z` = Undo)
 - Onboarding tour persistence: saved completion state to `localStorage` (`cad_tour_completed`) to prevent auto-reopening across sessions; added "Reset Tour" in user menu
