@@ -11,9 +11,15 @@ Tests:
 
 import pytest
 import uuid
+import asyncio
 from fastapi.testclient import TestClient
 from main import app
+from database import create_tables
 from services.auth_service import hash_password, verify_password, create_access_token, decode_token
+
+@pytest.fixture(autouse=True, scope="module")
+def init_db():
+    asyncio.run(create_tables())
 
 client = TestClient(app)
 

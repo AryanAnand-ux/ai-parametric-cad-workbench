@@ -239,3 +239,18 @@ class RAGService:
     def index_size() -> int:
         """Returns number of documents currently in the index."""
         return _get_collection().count()
+
+    @staticmethod
+    def get_stats() -> Dict[str, Any]:
+        """
+        Returns a statistics dictionary for the RAG index.
+
+        Keys:
+            total_documents (int): Number of documents in the ChromaDB collection.
+            collection_name (str): Name of the active ChromaDB collection.
+        """
+        collection = _get_collection()
+        return {
+            "total_documents": collection.count(),
+            "collection_name": collection.name,
+        }

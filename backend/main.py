@@ -346,10 +346,11 @@ async def generate_part(
             }
         )
 
+    gen_id = None
     # Persist to database if user is authenticated
     if current_user and db:
         try:
-            await save_generation_record(
+            gen_record = await save_generation_record(
                 db=db,
                 user_id=current_user.id,
                 prompt=payload.prompt,
@@ -367,6 +368,8 @@ async def generate_part(
                 design_mode=dual_output.design_mode,
                 components=dual_output.components,
             )
+            if gen_record:
+                gen_id = gen_record.id
         except Exception as dbe:
             logger.warning(f"[DB] Failed to persist generation: {dbe}")
 
@@ -374,6 +377,7 @@ async def generate_part(
 
     return GenerateResponse(
         status="success",
+        generation_id=gen_id,
         script_id=script_id,
         part_name=dual_output.part_name,
         description=dual_output.description,
@@ -481,10 +485,11 @@ async def generate_part_stream(
         yield f"data: {json.dumps({'phase': 'mesh_validation', 'message': 'Solid verified (watertight 2-manifold mesh)...', 'progress': 92})}\n\n"
         await asyncio.sleep(0.05)
 
+        gen_id = None
         # Database persistence
         if current_user and db:
             try:
-                await save_generation_record(
+                gen_record = await save_generation_record(
                     db=db,
                     user_id=current_user.id,
                     prompt=payload.prompt,
@@ -502,6 +507,8 @@ async def generate_part_stream(
                     design_mode=dual_output.design_mode,
                     components=dual_output.components,
                 )
+                if gen_record:
+                    gen_id = gen_record.id
             except Exception as dbe:
                 logger.warning(f"[DB] Failed to persist streamed generation: {dbe}")
 
@@ -509,6 +516,7 @@ async def generate_part_stream(
 
         final_response = {
             "status": "success",
+            "generation_id": gen_id,
             "script_id": script_id,
             "part_name": dual_output.part_name,
             "description": dual_output.description,

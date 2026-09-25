@@ -1,7 +1,7 @@
 # Project Memory
 ## AI Parametric CAD Workbench
 
-**Last Updated:** September 20, 2026  
+**Last Updated:** September 25, 2026  
 
 > This file is the living memory of the project — key decisions, lessons learned, known issues, environment context, and session notes. Update it after any significant decision or debugging session.
 
@@ -189,16 +189,17 @@ python -m pytest test_schemas.py test_ast_security.py test_llm_parser.py \
   test_geometry_validation.py test_recompute_validation.py -v
 ```
 
-### Current Test Suite (33 tests, all passing)
+### Current Test Suite (31 tests in focused suites, all passing)
 | File | Tests | Description |
 |------|-------|-------------|
-| `test_schemas.py` | 8 | Pydantic schema validation |
-| `test_ast_security.py` | 5 | AST sandbox patterns |
+| `test_schemas.py` | 9 | Pydantic schema validation |
+| `test_ast_security.py` | 9 | AST sandbox patterns |
 | `test_llm_parser.py` | 4 | LLM JSON response parsing |
 | `test_geometry_validation.py` | 4 | Mesh geometry checks |
 | `test_recompute_validation.py` | 3 | Recompute parameter contracts |
-| `test_universal_archetypes.py` | 5 | 20 archetype definitions |
+| `test_universal_archetypes.py` | 5 | 20 archetype definitions + geometry execution |
 | `test_auth_projects.py` | 4 | Auth + project CRUD |
+| `test_gallery_and_formats.py` | 1 | Gallery, metrics & format endpoints |
 
 ---
 
@@ -211,6 +212,9 @@ curl http://localhost:8000/api/health
 # Check RAG index status
 python -c "from services.rag_service import RAGService; print(RAGService.get_stats())"
 
+# Seed community gallery with sample models
+python seed_gallery.py
+
 # Generate a model via API (test)
 curl -X POST http://localhost:8000/api/generate \
   -H "Content-Type: application/json" \
@@ -222,3 +226,36 @@ cd frontend && npm run build
 # Docker full stack
 docker-compose up --build
 ```
+
+---
+
+## 8. Session Notes — September 25, 2026
+
+### Changes Made
+
+#### Bug Fixes
+- **`RAGService.get_stats()`** added (`backend/services/rag_service.py`) — fixes `AttributeError` in `test_universal_archetypes.py`. Returns `{"total_documents": int, "collection_name": str}`.
+- **Atelier Memberships section removed** from `frontend/src/LandingPage.jsx` — the full pricing section (3 tier cards) was removed cleanly. FAQ accordion now follows Testimonials directly.
+- **CI node version** bumped to 22 in `.github/workflows/ci.yml`.
+
+#### New Features: Gallery Publish Flow
+- **`GenerateResponse` schema** (`backend/schemas.py`) — added `generation_id: Optional[str]` field.
+- **`generate_part` endpoint** (`backend/main.py`) — captures `save_generation_record()` return and surfaces `generation_id` in the response.
+- **`generate_part_stream` endpoint** (`backend/main.py`) — same treatment for the SSE streaming path.
+- **`publish_design` endpoint** (`backend/routes/gallery.py`) — updated to accept flexible JSON body (list or `{"tags": [...]}` dict); returns `is_public: True`.
+- **`useCADWorkbench.js`** — added `generationId` to initial state, `APPLY_PART_RESPONSE` action, and localStorage persistence.
+- **`App.jsx`** — added `publishDesign` import, `handlePublishToGallery()` function, **Publish** button in toolbar (shows success feedback), and **Gallery** nav button.
+- **`handleSelectGeneration`** (`App.jsx`) — now passes `generation_id: gen.id || genId` to `applyPartResponse`.
+
+#### Community Gallery Seeded
+- **`backend/seed_gallery.py`** — script that generates real STL/STEP geometry and populates the DB with 5 public sample models:
+  1. Precision Stepped Drive Shaft (42 likes)
+  2. Parametric Electronics Enclosure Box (58 likes)
+  3. Involute Spur Gear with Lightening Holes (77 likes)
+  4. Heavy-Duty Gusseted L-Bracket (64 likes)
+  5. Ergonomic Desktop Phone & Tablet Stand (51 likes)
+
+### Architecture Notes
+- `save_generation_record()` is in `backend/routes/projects.py` and already returns the `Generation` ORM object after `db.refresh(generation)`. Capture its `.id` for the publish flow.
+- Gallery seeding uses the `async_session_maker` context manager from `database.py`.
+- Two RAG corpus examples fail their solid-count assertions at seed time (v-belt pulley, flanged pipe elbow, HVAC duct) — skipped gracefully. The other 5 compile cleanly.

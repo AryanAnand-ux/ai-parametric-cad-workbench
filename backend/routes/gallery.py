@@ -14,9 +14,9 @@ Routes:
 import json
 import uuid
 import logging
-from typing import Optional, List
+from typing import Optional, List, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy import select, desc, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -149,7 +149,7 @@ async def browse_gallery(
 @gallery_router.post("/designs/{generation_id}/publish")
 async def publish_design(
     generation_id: str,
-    tags: Optional[List[str]] = None,
+    payload: Optional[Any] = Body(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -165,12 +165,22 @@ async def publish_design(
         raise HTTPException(status_code=404, detail="Design not found or access denied")
 
     gen.is_public = True
+
+    # Support tags passed as list ["a", "b"] or dict {"tags": ["a", "b"]}
+    tags = None
+    if isinstance(payload, list):
+        tags = [str(t).strip().lower() for t in payload if t]
+    elif isinstance(payload, dict):
+        raw_tags = payload.get("tags")
+        if isinstance(raw_tags, list):
+            tags = [str(t).strip().lower() for t in raw_tags if t]
+
     if tags is not None:
-        gen.tags_json = json.dumps([t.strip().lower() for t in tags[:10]])
+        gen.tags_json = json.dumps(tags[:10])
     await db.commit()
 
     logger.info(f"[Gallery] Published design {generation_id} by user {current_user.id}")
-    return {"message": "Design published to gallery", "id": generation_id}
+    return {"message": "Design published to gallery", "id": generation_id, "is_public": True}
 
 
 # ---------------------------------------------------------------------------

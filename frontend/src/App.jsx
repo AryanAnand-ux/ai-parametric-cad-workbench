@@ -35,6 +35,7 @@ import {
   modifyPart,
   resolveAssetUrl,
   getGenerationDetail,
+  publishDesign,
 } from './api';
 import { VISUAL_STYLES, VIEWPORT_BACKGROUNDS } from './constants/visualStyles';
 
@@ -142,6 +143,7 @@ export default function App({ onGoHome, onGoToGallery }) {
     loading,
     recomputing,
     error,
+    generationId,
     scriptId,
     partName,
     description,
@@ -189,6 +191,8 @@ export default function App({ onGoHome, onGoToGallery }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [openDropdown, setOpenDropdown] = useState(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishSuccess, setPublishSuccess] = useState(false);
   const dropdownRef = useRef(null);
   const userMenuRef = useRef(null);
   const debounceTimerRef = useRef(null);
@@ -290,6 +294,7 @@ export default function App({ onGoHome, onGoToGallery }) {
       });
       const gen = await getGenerationDetail(genId);
       applyPartResponse({
+        generation_id: gen.id || genId,
         script_id: gen.script_id,
         part_name: gen.part_name,
         description: gen.description,
@@ -311,6 +316,38 @@ export default function App({ onGoHome, onGoToGallery }) {
       setError('Could not load saved model.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Publish active design to public community gallery
+  const handlePublishToGallery = async () => {
+    if (!isAuthenticated) {
+      setShowAuthModal(true);
+      return;
+    }
+    if (!generationId) {
+      setError('Please log in and generate or save this design to your workspace first before publishing to the community gallery.');
+      return;
+    }
+    setPublishing(true);
+    try {
+      // Automatically derive relevant discovery tags from part name & parameters
+      const tagSet = new Set();
+      if (partName) {
+        partName.toLowerCase().split(/[\s_-]+/).filter((w) => w.length > 2).forEach((w) => tagSet.add(w));
+      }
+      if (designMode === 'assembly') tagSet.add('assembly');
+      const tags = Array.from(tagSet).slice(0, 8);
+
+      await publishDesign(generationId, tags);
+      setPublishSuccess(true);
+      setTimeout(() => setPublishSuccess(false), 4000);
+    } catch (err) {
+      console.error('Failed to publish to gallery:', err);
+      const detail = err.response?.data?.detail || 'Failed to publish to community gallery.';
+      setError(detail);
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -622,7 +659,42 @@ export default function App({ onGoHome, onGoToGallery }) {
             </button>
           )}
 
+          {/* Publish to Community Gallery */}
+          {scriptId && (
+            <button
+              className="toolbar-btn header-action-btn"
+              onClick={handlePublishToGallery}
+              disabled={publishing}
+              title={publishSuccess ? 'Published to Community Gallery!' : 'Publish Design to Community Gallery'}
+              style={publishSuccess ? { color: '#10B981', borderColor: 'rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.08)' } : {}}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              <span>{publishing ? 'Publishing...' : publishSuccess ? 'Published!' : 'Publish'}</span>
+            </button>
+          )}
+
           <div className="header-divider" />
+
+          {/* Community Gallery Link */}
+          {onGoToGallery && (
+            <button
+              className="toolbar-btn header-action-btn"
+              onClick={onGoToGallery}
+              title="Explore Community CAD Gallery"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="7" height="7"/>
+                <rect x="14" y="3" width="7" height="7"/>
+                <rect x="14" y="14" width="7" height="7"/>
+                <rect x="3" y="14" width="7" height="7"/>
+              </svg>
+              <span className="header-btn-text">Gallery</span>
+            </button>
+          )}
 
           {/* Workspaces Drawer */}
           <button

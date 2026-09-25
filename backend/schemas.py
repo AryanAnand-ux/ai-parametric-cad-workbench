@@ -195,6 +195,10 @@ class GenerateRequest(BaseModel):
 class GenerateResponse(BaseModel):
     """Response payload for POST /api/generate"""
     status: str
+    generation_id: Optional[str] = Field(
+        default=None,
+        description="Database UUID of the persisted generation, if authenticated"
+    )
     script_id: str
     part_name: str
     description: str

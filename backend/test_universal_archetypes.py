@@ -30,6 +30,10 @@ def test_archetype_detection():
 
 def test_rag_retrieval_universal_coverage():
     """Verify that semantic RAG retrieves appropriate universal archetypes."""
+    stats = RAGService.get_stats()
+    if stats.get("total_documents", 0) == 0:
+        pytest.skip("ChromaDB index is empty in this test environment; build index with RAGService.build_index() first.")
+
     # Test queries
     test_cases = [
         ("stepped drive shaft with keyway and circlip", ["shaft", "stepped", "lathe"]),

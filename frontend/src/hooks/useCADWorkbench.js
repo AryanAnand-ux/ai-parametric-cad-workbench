@@ -17,6 +17,7 @@ const initialState = {
   error: null,
 
   // Response state from /api/generate & /api/modify
+  generationId: _p.generationId ?? null,
   scriptId: _p.scriptId ?? null,
   partName: _p.partName ?? null,
   description: _p.description ?? null,
@@ -96,6 +97,7 @@ function cadWorkbenchReducer(state, action) {
         localStorage.setItem(
           'cad_last_model',
           JSON.stringify({
+            generationId: res.generation_id ?? null,
             scriptId: res.script_id,
             partName: res.part_name,
             description: res.description,
@@ -117,6 +119,7 @@ function cadWorkbenchReducer(state, action) {
 
       return {
         ...state,
+        generationId: res.generation_id ?? null,
         scriptId: res.script_id,
         partName: res.part_name,
         description: res.description,
@@ -330,6 +333,7 @@ export function useCADWorkbench() {
     setShowShareModal: useCallback((v) => setField('showShareModal', v), [setField]),
     setShowOnboarding: useCallback((v) => setField('showOnboarding', v), [setField]),
     setBackendStatus: useCallback((v) => setField('backendStatus', v), [setField]),
+    setGenerationId: useCallback((v) => setField('generationId', v), [setField]),
     setChatHistory: useCallback((fnOrVal) => {
       setField('chatHistory', typeof fnOrVal === 'function' ? fnOrVal(state.chatHistory) : fnOrVal);
     }, [setField, state.chatHistory]),
