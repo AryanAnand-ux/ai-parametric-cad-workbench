@@ -71,7 +71,7 @@ jobs:
           echo "| Pipeline | ✅ |" >> $GITHUB_STEP_SUMMARY
 
   frontend-build:
-    name: Frontend Build (Node.js 20)
+    name: Frontend Build (Node.js 22)
     runs-on: ubuntu-latest
     defaults:
       run:

@@ -19,7 +19,7 @@ This document defines the mandatory coding conventions, architecture rules, and 
 2. **Fail loudly, recover gracefully** — Raise informative exceptions; never silently swallow errors.
 3. **Security is non-negotiable** — Any code execution path must be sandboxed or validated.
 4. **No orphaned files** — Every generated artifact (STL, GLB, STEP, .py scripts) must be cleaned up by the `ArtifactCleanupManager`.
-5. **Tests before merge** — All 33 pytest tests must pass before pushing to `main`.
+5. **Tests before merge** — All 60 pytest tests must pass before pushing to `main`.
 
 ---
 

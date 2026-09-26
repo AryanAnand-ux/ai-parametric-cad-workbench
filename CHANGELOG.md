@@ -8,6 +8,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **CI dependency gap** — Added `sqlalchemy[asyncio]` + explicit `greenlet` + `bcrypt` to `backend/requirements.txt` (fixed 8 consecutive CI collection failures); removed unused `sse-starlette`
+
 ### Planned
 - PostgreSQL migration (replace SQLite for production)
 - Alembic database migrations

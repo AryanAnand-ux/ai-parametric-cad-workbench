@@ -38,20 +38,20 @@ User Prompt (NL)
 | Data validation | Pydantic v2 | >=2.6.0 |
 | CAD engine | build123d | >=0.8.0 |
 | Geometry processing | trimesh + shapely + scipy | Latest |
-| ORM / DB driver | SQLAlchemy (async) + aiosqlite | >=2.0.0 |
+| ORM / DB driver | SQLAlchemy[asyncio] + greenlet + aiosqlite | >=2.0.0 |
 | Database | SQLite (`cad_workbench.db`) | - |
 | Vector store | ChromaDB (persistent, local) | >=0.5.0 |
 | Embeddings | sentence-transformers all-MiniLM-L6-v2 | >=3.0.0 |
 | Auth | python-jose (JWT) + passlib (bcrypt) | >=3.4.0 |
 | LLM API (primary) | google-genai (Gemini) | >=0.1.0 |
 | LLM API (fallback) | groq (Llama-3.3-70B) | >=1.0.0 |
-| Streaming | sse-starlette | >=2.0.0 |
+| Streaming (SSE) | fastapi.responses.StreamingResponse | built-in |
 
 ### 2.2 Frontend
 | Layer | Technology | Version |
 |-------|-----------|---------|
 | Build tool | Vite | Latest |
-| UI framework | React 18 | - |
+| UI framework | React 19 | - |
 | 3D rendering | React Three Fiber + Three.js | - |
 | State management | useReducer (custom hook) | - |
 | Styling | Vanilla CSS (index.css) | - |
@@ -89,7 +89,7 @@ Minor_project/
 │   │   └── chroma_db/          # Persistent ChromaDB vector store (121 docs)
 │   ├── requirements.txt
 │   ├── pytest.ini
-│   └── test_*.py               # 15+ test files (33 tests total)
+│   └── test_*.py               # 12 test files (60 tests total)
 │
 ├── frontend/
 │   ├── src/
@@ -282,7 +282,7 @@ See `backend/.env.example` for full list. Key variables:
 
 ### 6.4 CI/CD
 - **Full-Stack CI/CD** (`.github/workflows/ci.yml`): Triggers on every push and pull request to `main` touching `backend/**` or `frontend/**`.
-  - Backend job: Python 3.11, pip dependencies, runs full core pytest test suite (41 tests passing).
+  - Backend job: Python 3.11, pip dependencies, runs 42-test core pytest suite.
   - Frontend job: Node.js 20, npm clean install (`npm ci`), builds production bundle (`npm run build`).
 - **Benchmark Suite** (`.github/workflows/benchmark.yml`): Weekly automated benchmark suite (Monday 06:00 UTC).
   - Enforces 85% pass threshold across CAD archetypes and RAG retrieval coverage.

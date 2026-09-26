@@ -1,7 +1,7 @@
 # Project Memory
 ## AI Parametric CAD Workbench
 
-**Last Updated:** September 25, 2026  
+**Last Updated:** September 26, 2026  
 
 > This file is the living memory of the project — key decisions, lessons learned, known issues, environment context, and session notes. Update it after any significant decision or debugging session.
 
@@ -189,17 +189,21 @@ python -m pytest test_schemas.py test_ast_security.py test_llm_parser.py \
   test_geometry_validation.py test_recompute_validation.py -v
 ```
 
-### Current Test Suite (31 tests in focused suites, all passing)
+### Current Test Suite (60 tests, all passing)
 | File | Tests | Description |
 |------|-------|-------------|
-| `test_schemas.py` | 9 | Pydantic schema validation |
+| `test_schemas.py` | 12 | Pydantic schema validation |
 | `test_ast_security.py` | 9 | AST sandbox patterns |
-| `test_llm_parser.py` | 4 | LLM JSON response parsing |
-| `test_geometry_validation.py` | 4 | Mesh geometry checks |
-| `test_recompute_validation.py` | 3 | Recompute parameter contracts |
+| `test_gemini_web_client.py` | 7 | Gemini web client + fallback |
+| `test_api.py` | 5 | Admin/auth + endpoint contracts |
+| `test_modify_params.py` | 5 | Modify request/response contracts |
 | `test_universal_archetypes.py` | 5 | 20 archetype definitions + geometry execution |
 | `test_auth_projects.py` | 4 | Auth + project CRUD |
+| `test_geometry_validation.py` | 4 | Mesh geometry checks |
+| `test_llm_parser.py` | 4 | LLM JSON response parsing |
+| `test_recompute_validation.py` | 3 | Recompute parameter contracts |
 | `test_gallery_and_formats.py` | 1 | Gallery, metrics & format endpoints |
+| `test_pipeline.py` | 1 | Core CAD pipeline integration |
 
 ---
 
@@ -264,7 +268,13 @@ docker-compose up --build
 
 ## 9. Session Notes — September 26, 2026
 
-### Changes Made
+### CI Greenlet Fix (8 consecutive failures → green)
+- **Root cause:** `backend/requirements.txt` declared `sqlalchemy>=2.0.0` without the `[asyncio]` extra, so fresh CI installs never pulled `greenlet`. Every run failed at collection in `test_recompute_validation.py` → `main.py` → `sqlalchemy.ext.asyncio` with `ModuleNotFoundError: No module named 'greenlet'`. Local venv worked by accident (transitive `greenlet 3.5.6`).
+- **Fix:** `sqlalchemy[asyncio]>=2.0.0` + explicit `greenlet>=3.0.0` + explicit `bcrypt>=4.1.0` (`auth_service.py` imports `bcrypt` directly). Removed dead `sse-starlette` dep (SSE uses `fastapi.responses.StreamingResponse`; nothing imports `sse_starlette`).
+- **Verified:** 60/60 local tests pass; CI run `36206718946` green (Backend + Frontend).
+- **Docs drift fixed in same pass:** test counts 33/41/55 → 60, React 18 → 19, `sse-starlette` → `StreamingResponse` in `architecture.md`, stale `docs/review/` link in `README.md` → `CHANGELOG.md`, CI job name Node.js 20 → 22.
+
+### Changes Made (docs & cleanup)
 
 #### 1. Version History (`CHANGELOG.md`)
 - Created `CHANGELOG.md` following the Keep a Changelog standard.

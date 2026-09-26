@@ -1,7 +1,7 @@
 # Task Board
 ## AI Parametric CAD Workbench
 
-**Last Updated:** September 20, 2026  
+**Last Updated:** September 26, 2026  
 **Sprint:** Active Development  
 
 > This file tracks current, upcoming, and completed development tasks.
@@ -80,13 +80,14 @@
 - [x] Full-Stack CI/CD — GitHub Actions workflow runs 41 pytest tests + Vite frontend production build on push/PR
 - [x] Rate limit headers — `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` on API responses + 429 detail
 - [x] Gallery live search & discipline chips — debounced client-side search + extended tags filter
+- [x] CI greenlet fix — `sqlalchemy[asyncio]` + explicit `greenlet` + `bcrypt` in requirements (8 straight CI failures fixed, suite green)
 
 
 ---
 
 ## Notes
 
-- Backend test suite: `cd backend && python -m pytest -v` (33 tests, ~45s)
+- Backend test suite: `cd backend && python -m pytest -v` (60 tests, ~60s)
 - Frontend dev server: `cd frontend && npm run dev` (Vite, port 5173)
 - Backend dev server: `cd backend && uvicorn main:app --reload --port 8000`
 - RAG index rebuild: `python -c "from services.rag_service import RAGService; RAGService.build_index()"`

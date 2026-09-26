@@ -55,7 +55,7 @@ docker-compose up --build
 | [rules.md](./rules.md) | Coding standards & constraints |
 | [task.md](./task.md) | Active tasks & backlog |
 | [memory.md](./memory.md) | Key decisions, known issues, session notes |
-| [docs/review/](./docs/review/) | Weekly progress reports |
+| [CHANGELOG.md](./CHANGELOG.md) | Version history |
 
 ---
 
@@ -73,7 +73,7 @@ docker-compose up --build
 ## Tech Stack
 
 **Backend:** FastAPI · build123d · ChromaDB · Gemini/Groq · SQLite · JWT Auth  
-**Frontend:** React 18 · Vite · React Three Fiber · Vanilla CSS
+**Frontend:** React 19 · Vite · React Three Fiber · Vanilla CSS
 
 ---
 
@@ -81,7 +81,7 @@ docker-compose up --build
 
 ```bash
 cd backend
-python -m pytest -v    # 33 tests, ~45 seconds
+python -m pytest -v    # 60 tests, ~60 seconds
 ```
 
 ---
