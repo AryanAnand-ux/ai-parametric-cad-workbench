@@ -4,7 +4,7 @@
  * Faithfully adapted from "The Studio by Julie Granger" (thestudiobyjuliegranger.com):
  *  - Warm sand / linen palette (#F6F6F0, #EBEBE1, #FFFFFF) with deep warm espresso contrast (#474040)
  *  - Editorial Newsreader serif typography with italicized accents & Open Sans body
- *  - Fixed translucent mega-nav with center brand mark, language selector, and pill CTA
+  *  - Fixed translucent mega-nav with center brand mark and pill CTA
  *  - Full-bleed atelier hero with warm golden hour tones, breadcrumbs, and floating video preview card
  *  - Expandable video lightbox modal
  *  - Three Pillars of the Method with circular numbered badges
@@ -84,7 +84,6 @@ const Icons = {
 export default function LandingPage({ onEnterApp, onGoToGallery }) {
   const [scrollY, setScrollY] = useState(0);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
-  const [language, setLanguage] = useState('EN');
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
 
@@ -225,18 +224,8 @@ export default function LandingPage({ onEnterApp, onGoToGallery }) {
           {/* Right Actions: Language + CTA */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '20px' }}>
             <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.85 }}>
-              <span
-                onClick={() => setLanguage('EN')}
-                style={{ cursor: 'pointer', fontWeight: language === 'EN' ? '700' : '400' }}
-              >
+              <span style={{ fontWeight: '700' }}>
                 EN
-              </span>
-              <span>/</span>
-              <span
-                onClick={() => setLanguage('FR')}
-                style={{ cursor: 'pointer', fontWeight: language === 'FR' ? '700' : '400' }}
-              >
-                FR
               </span>
             </div>
 
