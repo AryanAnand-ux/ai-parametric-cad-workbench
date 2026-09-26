@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getGallery, likeDesign, forkDesign } from '../api';
+import ModelThumbnail from '../components/ModelThumbnail';
 
 const SORT_OPTIONS = [
   { value: 'recent', label: 'Most Recent' },
@@ -65,32 +66,20 @@ function DesignCard({ item, onFork, onLike, onLoad }) {
       {/* Preview thumbnail */}
       <div
         style={{
-          height: '160px',
-          background: 'linear-gradient(135deg, #EBEBE1 0%, #F6F6F0 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          height: '170px',
           position: 'relative',
           flexShrink: 0,
+          borderBottom: '1px solid rgba(71, 64, 64, 0.12)',
         }}
       >
-        {item.mesh_url ? (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '40px', marginBottom: '6px' }}>⬡</div>
-            <div style={{ fontSize: '10px', color: '#99908F', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em' }}>
-              3D SOLID
-            </div>
-          </div>
-        ) : (
-          <div style={{ fontSize: '36px', opacity: 0.3 }}>◻</div>
-        )}
+        <ModelThumbnail item={item} />
 
         {/* Tag pills */}
         {item.tags?.length > 0 && (
-          <div style={{ position: 'absolute', top: '8px', left: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+          <div style={{ position: 'absolute', top: '8px', left: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap', zIndex: 3 }}>
             {item.tags.slice(0, 2).map(tag => (
               <span key={tag} style={{
-                background: 'rgba(71,64,64,0.75)',
+                background: 'rgba(71,64,64,0.82)',
                 color: '#FFFDE2',
                 fontSize: '9px',
                 fontWeight: 600,
@@ -99,6 +88,7 @@ function DesignCard({ item, onFork, onLike, onLoad }) {
                 fontFamily: 'var(--font-mono)',
                 letterSpacing: '0.04em',
                 textTransform: 'uppercase',
+                backdropFilter: 'blur(4px)',
               }}>{tag}</span>
             ))}
           </div>
@@ -108,9 +98,11 @@ function DesignCard({ item, onFork, onLike, onLoad }) {
         {item.forked_from && (
           <div style={{
             position: 'absolute', top: '8px', right: '8px',
-            background: 'rgba(72,146,53,0.85)',
+            background: 'rgba(72,146,53,0.9)',
             color: '#fff', fontSize: '9px', fontWeight: 700,
             padding: '2px 7px', borderRadius: '12px', fontFamily: 'var(--font-mono)',
+            zIndex: 3,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
           }}>FORK</div>
         )}
       </div>
@@ -260,23 +252,23 @@ export default function Gallery({ onGoToApp }) {
     <div style={{ minHeight: '100vh', background: '#F6F6F0', fontFamily: 'var(--font-sans)' }}>
 
       {/* Header */}
-      <div style={{ background: '#474040', padding: '0 40px', display: 'flex', alignItems: 'center', height: '64px', gap: '20px' }}>
+      <div style={{ background: '#474040', padding: '0 clamp(16px, 4vw, 40px)', display: 'flex', alignItems: 'center', height: '64px', gap: '14px', flexWrap: 'wrap' }}>
         <button
           onClick={() => window.location.hash = ''}
           style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', padding: 0 }}
         >
-          <div style={{ width: '30px', height: '30px', background: '#FFFDE2', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#474040' }}>
+          <div style={{ width: '30px', height: '30px', background: '#FFFDE2', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#474040', flexShrink: 0 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
             </svg>
           </div>
-          <span style={{ fontFamily: 'var(--font-serif)', fontSize: '18px', fontStyle: 'italic', color: '#FFFDE2', fontWeight: 500 }}>
+          <span style={{ fontFamily: 'var(--font-serif)', fontSize: '18px', fontStyle: 'italic', color: '#FFFDE2', fontWeight: 500, whiteSpace: 'nowrap' }}>
             The CAD Atelier
           </span>
         </button>
 
         <span style={{ color: 'rgba(255,253,226,0.35)', fontSize: '18px' }}>·</span>
-        <span style={{ fontFamily: 'var(--font-serif)', fontSize: '16px', fontStyle: 'italic', color: 'rgba(255,253,226,0.7)' }}>
+        <span style={{ fontFamily: 'var(--font-serif)', fontSize: '15px', fontStyle: 'italic', color: 'rgba(255,253,226,0.7)', whiteSpace: 'nowrap' }}>
           Community Gallery
         </span>
 
@@ -288,6 +280,7 @@ export default function Gallery({ onGoToApp }) {
             background: '#FFFDE2', color: '#474040', border: 'none',
             borderRadius: '6px', padding: '7px 16px', fontWeight: 600,
             fontSize: '12px', cursor: 'pointer', fontFamily: 'var(--font-sans)',
+            whiteSpace: 'nowrap',
           }}
         >
           Open Workbench →
@@ -295,9 +288,9 @@ export default function Gallery({ onGoToApp }) {
       </div>
 
       {/* Hero */}
-      <div style={{ background: '#474040', padding: '32px 40px 40px', textAlign: 'center' }}>
+      <div style={{ background: '#474040', padding: '28px clamp(16px, 4vw, 40px) 36px', textAlign: 'center' }}>
         <h1 style={{
-          fontFamily: 'var(--font-serif)', fontSize: '32px', fontStyle: 'italic',
+          fontFamily: 'var(--font-serif)', fontSize: 'clamp(24px, 5vw, 32px)', fontStyle: 'italic',
           color: '#FFFDE2', fontWeight: 500, margin: '0 0 8px',
         }}>
           Community CAD Gallery
@@ -352,9 +345,9 @@ export default function Gallery({ onGoToApp }) {
       )}
 
       {/* Filters */}
-      <div style={{ padding: '20px 40px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', borderBottom: '1px solid rgba(71,64,64,0.1)' }}>
+      <div style={{ padding: '16px clamp(16px, 4vw, 40px)', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', borderBottom: '1px solid rgba(71,64,64,0.1)' }}>
         {/* Tag pills */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', flex: 1 }}>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', flex: 1, minWidth: '220px' }}>
           <button
             onClick={() => { setActiveTag(''); setPage(1); }}
             style={{
@@ -398,7 +391,7 @@ export default function Gallery({ onGoToApp }) {
       </div>
 
       {/* Grid */}
-      <div style={{ padding: '32px 40px' }}>
+      <div style={{ padding: '28px clamp(16px, 4vw, 40px)' }}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '80px 0', color: '#99908F', fontFamily: 'var(--font-sans)' }}>
             <div style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.4 }}>⬡</div>
@@ -427,7 +420,7 @@ export default function Gallery({ onGoToApp }) {
         ) : (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))',
             gap: '20px',
           }}>
             {items.map(item => (

@@ -37,6 +37,10 @@ def main():
             "test_modify_params.py",
             "test_geometry_validation.py",
             "test_recompute_validation.py",
+            "test_auth_projects.py",
+            "test_universal_archetypes.py",
+            "test_pipeline.py",
+            "test_gallery_and_formats.py",
             "-v", "--tb=short",
         ],
         "Pytest Core Regression Suite"

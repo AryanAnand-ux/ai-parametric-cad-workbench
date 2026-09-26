@@ -259,3 +259,35 @@ docker-compose up --build
 - `save_generation_record()` is in `backend/routes/projects.py` and already returns the `Generation` ORM object after `db.refresh(generation)`. Capture its `.id` for the publish flow.
 - Gallery seeding uses the `async_session_maker` context manager from `database.py`.
 - Two RAG corpus examples fail their solid-count assertions at seed time (v-belt pulley, flanged pipe elbow, HVAC duct) — skipped gracefully. The other 5 compile cleanly.
+
+---
+
+## 9. Session Notes — September 26, 2026
+
+### Changes Made
+
+#### 1. Version History (`CHANGELOG.md`)
+- Created `CHANGELOG.md` following the Keep a Changelog standard.
+- Documents all versions from `v0.1.0` through current `v0.9.0`, covering CAD pipeline, LLM fallback, auth, gallery, archetypes, shortcuts, rate limiting, and gallery publish flow.
+
+#### 2. Model Thumbnails in Community Gallery
+- Created `frontend/src/components/ModelThumbnail.jsx` rendering archetype-tailored vector CAD blueprint isometric previews (Gear, Bracket, Enclosure, Stepped Shaft, Stand, Heatsink, Flange, Duct, and Generic CAD Prisms).
+- Added precision coordinate grid backdrop, corner crosshair marks, and a floating spec badge displaying `SOLID`/`MESH` watertight status and face count.
+- Integrated into `frontend/src/pages/Gallery.jsx`.
+
+#### 3. Mobile Responsive Workbench Pass
+- Refined responsive styles in `frontend/src/index.css` under `@media (max-width: 768px)`:
+  - Header actions and viewport navigation groups refactored into sleek, horizontal touch-scrolling carousels with hidden scrollbars.
+  - When `.sidebar-collapsed`, the sidebar is set to `display: none !important` so mobile devices allow the 3D viewer to occupy full vertical space.
+  - Viewport height set to dynamic `52vh` with `max-height: 520px` to maintain comfortable touch-orbiting without trapping scroll.
+  - Gallery page updated with fluid `clamp()` paddings and responsive grid minmax (`min(100%, 280px)`).
+
+#### 4. Project Cleanup & Test Modernization
+- Removed obsolete, monolithic scratch test files:
+  - `backend/test_all_weeks_1_to_5.py` (386 lines)
+  - `backend/test_week3_llm.py` (208 lines)
+  - `backend/test_week4_build123d.py` (170 lines)
+- Modernized `backend/test_pipeline.py` with `@pytest.mark.asyncio` for standard pytest discovery.
+- Updated `backend/run_tests.bat` and `backend/run_tests.py` to run the active test suites.
+- Verified test suite: **55 tests passed, 0 failures**.
+- Verified production build: `npm run build` completed cleanly.

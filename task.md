@@ -26,7 +26,8 @@
 
 ### Frontend
 - [ ] Parameter sidebar: add parameter grouping by category (dimensions, features, tolerances)
-- [ ] Mobile responsive pass for workbench (sidebar collapse, toolbar reflow)
+- [x] Mobile responsive pass for workbench (sidebar collapse, toolbar reflow)
+- [x] Model thumbnails in gallery (vector CAD blueprint archetypes with technical grid & badges)
 
 ### DevOps
 - [ ] Add Dockerfile healthcheck for the backend container
@@ -41,7 +42,7 @@
 - [ ] Export: add batch export (download all formats as ZIP)
 - [ ] Gallery: add pagination / infinite scroll
 - [ ] Projects sidebar: drag-to-reorder projects
-- [ ] Add `CHANGELOG.md` to track version history
+- [x] Add `CHANGELOG.md` to track version history
 
 ---
 

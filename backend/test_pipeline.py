@@ -3,14 +3,14 @@ import asyncio
 import time
 from pathlib import Path
 
-# Add backend directory to sys.path
-sys.path.append(str(Path(__file__).resolve().parent))
+import pytest
 
 from services.cad_runner import CADRunner
 from services.cleanup import ArtifactCleanupManager
 from config import MODELS_DIR
 
-async def run_week2_async_tests():
+@pytest.mark.asyncio
+async def test_pipeline_async_execution():
     print("=" * 60)
     print("[TEST] RUNNING WEEK 2 ASYNC SUBPROCESS & ERROR TRAPPING TESTS")
     print("=" * 60)
