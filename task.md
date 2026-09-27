@@ -30,7 +30,7 @@
 - [x] Model thumbnails in gallery (vector CAD blueprint archetypes with technical grid & badges)
 
 ### DevOps
-- [ ] Add Dockerfile healthcheck for the backend container
+- [x] Dockerfile healthcheck for the backend container (exists in `Dockerfile`)
 - [ ] Set up Dependabot for Python + npm dependency updates
 
 ---

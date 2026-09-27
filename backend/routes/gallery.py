@@ -34,23 +34,42 @@ gallery_router = APIRouter(prefix="/api", tags=["gallery"])
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _safe_json_loads(raw, fallback):
+    """Parse a JSON column defensively — one corrupt row must not 500 the whole gallery."""
+    if not raw:
+        return fallback
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        logger.warning(f"[GALLERY] Corrupt JSON column, using fallback: {str(raw)[:80]}")
+        return fallback
+
+
 def _generation_to_gallery_card(g: Generation, author_name: str = "Anonymous") -> dict:
     """Serialize a Generation to a public gallery card."""
-    tags = json.loads(g.tags_json) if g.tags_json else []
-    mesh_info = json.loads(g.mesh_info_json) if g.mesh_info_json else {}
-    params = json.loads(g.parameters_json) if g.parameters_json else []
+    tags = _safe_json_loads(g.tags_json, [])
+    mesh_info = _safe_json_loads(g.mesh_info_json, {})
+    params = _safe_json_loads(g.parameters_json, [])
+    if not isinstance(tags, list):
+        tags = []
+    if not isinstance(mesh_info, dict):
+        mesh_info = {}
+    if not isinstance(params, list):
+        params = []
+    prompt = g.prompt or ""
+    created = g.created_at.isoformat() if getattr(g.created_at, "isoformat", None) else ""
 
     return {
         "id": g.id,
         "script_id": g.script_id,
         "part_name": g.part_name or "Untitled Part",
         "description": g.description or "",
-        "prompt": g.prompt[:200] + ("…" if len(g.prompt) > 200 else ""),
+        "prompt": prompt[:200] + ("…" if len(prompt) > 200 else ""),
         "tags": tags,
         "like_count": g.like_count,
         "fork_count": g.fork_count,
         "author": author_name,
-        "created_at": g.created_at.isoformat(),
+        "created_at": created,
         "mesh_url": g.mesh_url,
         "step_url": g.step_url,
         "parameter_count": len(params),

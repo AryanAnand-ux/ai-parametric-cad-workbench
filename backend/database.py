@@ -7,11 +7,15 @@ by changing DATABASE_URL in .env to:
 """
 
 import os
+import logging
 from pathlib import Path
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
 from config import BASE_DIR
+
+logger = logging.getLogger("cad_workbench.database")
 
 # Default: SQLite in the backend directory (zero-config dev setup)
 # Production: set DATABASE_URL env var to PostgreSQL
@@ -24,6 +28,15 @@ engine = create_async_engine(
     # SQLite needs connect_args for concurrent access
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
 )
+
+if "sqlite" in DATABASE_URL:
+    @event.listens_for(engine.sync_engine, "connect")
+    def _set_sqlite_pragmas(dbapi_conn, _connection_record):
+        """WAL mode + busy timeout so concurrent generate/gallery writes don't hit 'database is locked'."""
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.close()
 
 async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -65,6 +78,9 @@ async def create_tables():
                         for col_name, col_def in migrations:
                             if col_name not in existing:
                                 cursor.execute(f"ALTER TABLE generations ADD COLUMN {col_name} {col_def}")
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Never swallow migration failures silently — a half-migrated
+                    # schema causes confusing errors later. Production uses Alembic.
+                    logger.error(f"[DB] SQLite auto-migration failed: {e}")
+                    raise
             await conn.run_sync(_migrate_sqlite_columns)

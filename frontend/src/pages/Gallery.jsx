@@ -13,7 +13,7 @@ const FEATURED_TAGS = [
   'manifold', 'aerospace', 'robotics', 'thermal', 'fixture'
 ];
 
-function DesignCard({ item, onFork, onLike, onLoad }) {
+function DesignCard({ item, onFork }) {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(item.like_count || 0);
   const [forking, setForking] = useState(false);

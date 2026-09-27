@@ -141,14 +141,25 @@ Landing Page
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/generate` | POST | Generate new CAD model from prompt |
+| `/api/generate/stream` | POST (SSE) | Generate with staged progress events |
 | `/api/recompute` | POST | Re-run script with updated parameters |
 | `/api/modify` | POST | Modify existing model via natural language |
 | `/api/health` | GET | Backend health + LLM provider status |
-| `/api/export/{script_id}/{format}` | GET | Download model file |
+| `/api/metrics` | GET | Request/telemetry counters |
+| `/api/download/{script_id}/{format}` | GET | Download model file (stl/step/obj/glb) |
+| `/api/script/{script_id}` | GET (admin) | Retrieve raw Python source |
+| `/api/admin/models` | GET (admin) | List stored model artifacts |
+| `/api/admin/cleanup` | POST (admin) | Purge stale artifacts |
+| `/static/models/{file}` | GET | Serve generated model files |
+| `/api/auth/register` | POST | Create account |
+| `/api/auth/login` | POST | Obtain JWT token pair |
+| `/api/auth/refresh` | POST | Rotate refresh token |
+| `/api/auth/me` | GET | Current user profile |
 | `/api/projects` | GET/POST | List/create user projects |
+| `/api/generations/{id}` | GET | Generation detail |
 | `/api/gallery` | GET | Browse public gallery |
-| `/auth/register` | POST | Create account |
-| `/auth/login` | POST | Obtain JWT token |
+| `/api/designs/{id}/publish` | POST | Publish generation to gallery |
+| `/api/designs/{id}/like`, `/fork` | POST | Like / fork a gallery design |
 
 ---
 

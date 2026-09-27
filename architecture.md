@@ -283,7 +283,7 @@ See `backend/.env.example` for full list. Key variables:
 ### 6.4 CI/CD
 - **Full-Stack CI/CD** (`.github/workflows/ci.yml`): Triggers on every push and pull request to `main` touching `backend/**` or `frontend/**`.
   - Backend job: Python 3.11, pip dependencies, runs 42-test core pytest suite.
-  - Frontend job: Node.js 20, npm clean install (`npm ci`), builds production bundle (`npm run build`).
+  - Frontend job: Node.js 22, npm clean install (`npm ci`), builds production bundle (`npm run build`).
 - **Benchmark Suite** (`.github/workflows/benchmark.yml`): Weekly automated benchmark suite (Monday 06:00 UTC).
   - Enforces 85% pass threshold across CAD archetypes and RAG retrieval coverage.
 

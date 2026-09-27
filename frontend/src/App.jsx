@@ -908,8 +908,6 @@ export default function App({ onGoHome, onGoToGallery }) {
                 <TelemetryHUD
                   meshInfo={meshInfo}
                   recompTime={recompTime}
-                  modelUsed={modelUsed}
-                  designMode={designMode}
                 />
                 <div className="parameter-search-row">
                   <input

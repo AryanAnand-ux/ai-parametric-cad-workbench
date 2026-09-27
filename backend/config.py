@@ -1,7 +1,21 @@
 import os
 import sys
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
+
+logger = logging.getLogger("cad_workbench.config")
+
+def _int_env(name: str, default: int) -> int:
+    """Read an int env var safely — log and fall back instead of crashing at import."""
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(f"[CONFIG] Invalid int for {name}={raw!r}; using default {default}")
+        return default
 
 # Ensure .env is loaded before reading any environment variables
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -27,7 +41,7 @@ _default_python = str(_venv_python) if _venv_python.exists() else sys.executable
 PYTHON_EXEC = os.getenv("PYTHON_EXEC", _default_python)
 
 # API & Server Configuration
-PORT = int(os.getenv("PORT", "8000"))
+PORT = _int_env("PORT", 8000)
 HOST = os.getenv("HOST", "0.0.0.0")
 
 # LLM API Keys (centralized)
@@ -44,17 +58,19 @@ GEMINI_WEB_BL = os.getenv("GEMINI_WEB_BL", "boq_assistant-bard-web-server_202607
 GEMINI_WEB_AUTH_USER = os.getenv("GEMINI_WEB_AUTH_USER", "").strip()
 GEMINI_WEB_XSRF_TOKEN = os.getenv("GEMINI_WEB_XSRF_TOKEN", "").strip()
 GEMINI_WEB_PROXY = os.getenv("GEMINI_WEB_PROXY", "").strip()
-GEMINI_WEB_RETRY_ATTEMPTS = int(os.getenv("GEMINI_WEB_RETRY_ATTEMPTS", "3"))
+GEMINI_WEB_RETRY_ATTEMPTS = _int_env("GEMINI_WEB_RETRY_ATTEMPTS", 3)
 GEMINI_WEB_RETRY_DELAY_SEC = float(os.getenv("GEMINI_WEB_RETRY_DELAY_SEC", "2"))
 GEMINI_WEB_TIMEOUT_SEC = float(os.getenv("GEMINI_WEB_TIMEOUT_SEC", "180"))
 
 # Standalone Gemini-Web2API Proxy Service Settings
 GEMINI_WEB2API_HOST = os.getenv("GEMINI_WEB2API_HOST", "127.0.0.1")  # Strictly loopback for security
-GEMINI_WEB2API_PORT = int(os.getenv("GEMINI_WEB2API_PORT", "8081"))
+GEMINI_WEB2API_PORT = _int_env("GEMINI_WEB2API_PORT", 8081)
 GEMINI_WEB2API_KEY = os.getenv("GEMINI_WEB2API_KEY", "")  # Optional Bearer token for localhost auth
 
 # API boundary settings
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip()
+# JWT signing secret — lifespan in main.py refuses production startup with the dev default.
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-change-in-production-please")
 ALLOWED_ORIGINS = [
 	origin.strip()
 	for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
@@ -62,6 +78,6 @@ ALLOWED_ORIGINS = [
 ]
 RELOAD = os.getenv("RELOAD", "false").strip().lower() in ("true", "1", "yes")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
-CAD_MAX_CONCURRENT_EXECUTIONS = int(os.getenv("CAD_MAX_CONCURRENT_EXECUTIONS", "2"))
-CAD_EXECUTION_TIMEOUT_SECONDS = int(os.getenv("CAD_EXECUTION_TIMEOUT_SECONDS", "60"))
+CAD_MAX_CONCURRENT_EXECUTIONS = _int_env("CAD_MAX_CONCURRENT_EXECUTIONS", 2)
+CAD_EXECUTION_TIMEOUT_SECONDS = _int_env("CAD_EXECUTION_TIMEOUT_SECONDS", 60)
 RAG_BUILD_ON_STARTUP = os.getenv("RAG_BUILD_ON_STARTUP", "false").strip().lower() in ("true", "1", "yes")

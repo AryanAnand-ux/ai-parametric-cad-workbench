@@ -100,7 +100,7 @@ This document defines the mandatory coding conventions, architecture rules, and 
 - Never navigate programmatically with `window.location.href` — always use hash
 
 ### 4.5 API Rules
-- All API calls go through `src/api.js` — never use raw `fetch` in components
+- All API calls go through `src/api.js` (axios-based) — never use raw `fetch`/axios in components
 - `API_BASE_URL` is the single source of truth for the backend URL
 - Always handle loading + error states after API calls
 - Streaming responses (SSE) must use `EventSource` or `ReadableStream` — never `fetch` with large timeouts

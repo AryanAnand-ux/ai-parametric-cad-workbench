@@ -168,7 +168,7 @@ ENVIRONMENT=development
 - Ran full test suite: 33/33 passed
 
 ### Earlier Sessions
-- Weeks 1–9: See `docs/review/week1.md` through `docs/review/week9_onwards.md` for detailed weekly progress reports
+- Weeks 1–9: weekly progress reports were in `docs/review/` (deleted Sep 20, 2026); content preserved in git history (`git log -- docs/review/`)
 
 ---
 

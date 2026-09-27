@@ -20,6 +20,7 @@ load_dotenv()
 from config import (
     MODELS_DIR, PORT, HOST, GEMINI_API_KEY, GEMINI_WEB_ENABLED,
     ADMIN_TOKEN, ALLOWED_ORIGINS, RELOAD, ENVIRONMENT, RAG_BUILD_ON_STARTUP,
+    JWT_SECRET_KEY,
 )
 from schemas import (
     GenerateRequest, GenerateResponse,
@@ -129,6 +130,9 @@ async def lifespan(app: FastAPI):
     if ENVIRONMENT == "production" and not ADMIN_TOKEN:
         logger.critical("[FATAL] ENVIRONMENT is set to 'production' but ADMIN_TOKEN is not configured.")
         raise RuntimeError("ADMIN_TOKEN environment variable must be set when running in production mode.")
+    if ENVIRONMENT == "production" and JWT_SECRET_KEY in ("", "dev-secret-change-in-production-please"):
+        logger.critical("[FATAL] ENVIRONMENT is set to 'production' but JWT_SECRET_KEY is the dev default.")
+        raise RuntimeError("JWT_SECRET_KEY environment variable must be set to a long random string when running in production mode.")
 
     # Initialize database tables
     await create_tables()
@@ -555,7 +559,8 @@ async def recompute_part(payload: RecomputeRequest, request: Request = None, res
             response.headers["X-RateLimit-Reset"] = str(reset_in)
 
     t0 = time.perf_counter()
-    execution_id = f"{payload.script_id}_recomputed_{uuid.uuid4().hex[:10]}"
+    # Truncate: SAFE_SCRIPT_ID_PATTERN caps at 100 chars (suffix is 22 chars).
+    execution_id = f"{payload.script_id[:70]}_recomputed_{uuid.uuid4().hex[:10]}"
     result = await CADRunner.execute_script_async(
         script_id=execution_id,
         python_code=payload.python_code,
@@ -621,10 +626,9 @@ async def recompute_part(payload: RecomputeRequest, request: Request = None, res
 async def trigger_cleanup(x_admin_token: str | None = Header(default=None)):
     """Manually trigger stale artifact cleanup (async-safe)."""
     require_admin_token(x_admin_token)
-    loop = asyncio.get_event_loop()
     # Run sync blocking I/O in a thread pool to avoid blocking the event loop
-    count = await loop.run_in_executor(
-        None, ArtifactCleanupManager.cleanup_old_artifacts, 3600   # 1 hour threshold (not 0)
+    count = await asyncio.to_thread(
+        ArtifactCleanupManager.cleanup_old_artifacts, 3600   # 1 hour threshold (not 0)
     )
     return {"status": "success", "removed_files": count}
 
@@ -659,7 +663,8 @@ async def get_script_code(script_id: str, x_admin_token: str | None = Header(def
             code = f.read()
         return {"status": "success", "script_id": script_id, "code": code}
     except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Could not read script file: {e}")
+        logger.error(f"[SCRIPT] Could not read script file {script_id}: {e}")
+        raise HTTPException(status_code=500, detail="Could not read script file.")
 
 
 # ---------------------------------------------------------------------------

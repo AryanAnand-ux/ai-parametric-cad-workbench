@@ -221,13 +221,8 @@ export default function LandingPage({ onEnterApp, onGoToGallery }) {
             </span>
           </div>
 
-          {/* Right Actions: Language + CTA */}
+          {/* Right Actions: CTA */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '20px' }}>
-            <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.85 }}>
-              <span style={{ fontWeight: '700' }}>
-                EN
-              </span>
-            </div>
 
             <button
               onClick={onEnterApp}

@@ -3,7 +3,7 @@ import React from 'react';
 /**
  * TelemetryHUD — CAD Model Telemetry, Watertight Manifold & Boundary Envelope Metrics
  */
-export default function TelemetryHUD({ meshInfo, recompTime, modelUsed, designMode }) {
+export default function TelemetryHUD({ meshInfo, recompTime }) {
   if (!meshInfo) return null;
 
   const { dimensions_mm, volume_mm3, is_watertight, body_count } = meshInfo;
