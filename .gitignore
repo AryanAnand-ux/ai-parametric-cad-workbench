@@ -65,3 +65,7 @@ backend/static/
 # Scratch / Temp Directories
 scratch/
 benchmark_results.json
+
+# SQLite WAL sidecars (regenerated at runtime)
+*.db-shm
+*.db-wal
