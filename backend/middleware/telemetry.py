@@ -142,11 +142,11 @@ class TelemetryMiddleware(BaseHTTPMiddleware):
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             try:
-                import jose.jwt as _jwt
+                import jwt as _jwt
                 import os
                 token = auth_header[7:]
                 # Decode without verification just to extract sub for logging
-                payload = _jwt.get_unverified_claims(token)
+                payload = _jwt.decode(token, options={"verify_signature": False})
                 user_id = payload.get("sub")
             except Exception:
                 pass

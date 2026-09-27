@@ -5,7 +5,7 @@ const TOUR_STEPS = [
   {
     id: 'prompt',
     title: 'Natural Language CAD Synthesis',
-    badge: 'Step 1 of 5',
+    badge: 'Step 1 of 6',
     icon: '⚡',
     description:
       'Describe any mechanical part using engineering terminology or plain language. Our 4-tier fallback synthesizes build123d Python scripts grounded by a vector index of 121 CAD templates.',
@@ -14,7 +14,7 @@ const TOUR_STEPS = [
   {
     id: 'viewport',
     title: 'Real-Time 3D Solid Viewport',
-    badge: 'Step 2 of 5',
+    badge: 'Step 2 of 6',
     icon: '📐',
     description:
       'Inspect true boundary-representation (B-Rep) solid geometry. Use left-click to orbit, right-click to pan, and scroll to zoom. The ViewCube provides instantaneous isometric and orthographic camera views.',
@@ -23,7 +23,7 @@ const TOUR_STEPS = [
   {
     id: 'sliders',
     title: 'Sub-200ms Parametric Sliders',
-    badge: 'Step 3 of 5',
+    badge: 'Step 3 of 6',
     icon: '🎛️',
     description:
       'Every dimension, hole radius, wall thickness, and pitch angle is exposed as an interactive slider. Dragging sliders recomputes geometry directly in the OpenCASCADE kernel with no slow LLM re-calls.',
@@ -32,7 +32,7 @@ const TOUR_STEPS = [
   {
     id: 'modify',
     title: 'Conversational Chat-to-Modify',
-    badge: 'Step 4 of 5',
+    badge: 'Step 4 of 6',
     icon: '💬',
     description:
       'Need an engineering revision? Chat naturally with your design. Ask to "add 4x M4 corner holes", "make walls 2mm thicker", or "fillet all vertical edges". Self-correction ensures valid geometry topology.',
@@ -41,11 +41,21 @@ const TOUR_STEPS = [
   {
     id: 'export',
     title: 'Manufacturing & CNC Export',
-    badge: 'Step 5 of 5',
+    badge: 'Step 5 of 6',
     icon: '🚀',
     description:
       'Export production-grade STEP files for SolidWorks, Fusion 360, and CNC toolpath programming, or watertight STL meshes optimized for additive manufacturing. Inspect the raw Python CAD source code anytime.',
     tip: 'Click "Export" in the top navbar to download your files or "Inspect Code" to see the generated Python script.',
+  },
+  {
+    id: 'resources',
+    title: 'build123d Docs & Tutorials',
+    badge: 'Step 6 of 6',
+    icon: '📚',
+    description:
+      'Go deeper with the parametric kernel behind this workbench. The official build123d documentation covers sketches, operations, and export recipes used by the generated scripts.',
+    tip: 'Keep this reference handy when tweaking generated Python in "Inspect Code".',
+    link: { href: 'https://build123d.readthedocs.io', label: 'build123d docs & tutorials' },
   },
 ];
 
@@ -176,6 +186,26 @@ export default function OnboardingTour({ isOpen, onClose }) {
             <span style={{ fontWeight: 700 }}>💡 Tip:</span>
             <span>{step.tip}</span>
           </div>
+
+          {/* Optional resource link (final step) */}
+          {step.link && (
+            <div style={{ marginBottom: '24px' }}>
+              <a
+                href={step.link.href}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: '#474040',
+                  textDecoration: 'underline',
+                  textUnderlineOffset: '3px',
+                }}
+              >
+                {step.link.label} →
+              </a>
+            </div>
+          )}
 
           {/* Actions */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

@@ -14,12 +14,32 @@ services:
       RAG_BUILD_ON_STARTUP: "false"
       TRUST_PROXY: "true"
       DATABASE_URL: sqlite+aiosqlite:////app/scratch/temp/cad_workbench.db
+      # DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cad}:${POSTGRES_PASSWORD:-cadpass}@postgres:5432/${POSTGRES_DB:-cad_workbench}  # Postgres switch (leave SQLite default above active)
     volumes:
       - cad-artifacts:/app/scratch/temp
     expose:
       - "8000"
     # ports:
     #   - "8000:8000"  # debug only — do not expose backend directly in production
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cad}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cadpass}
+      POSTGRES_DB: ${POSTGRES_DB:-cad_workbench}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-cad} -d $${POSTGRES_DB:-cad_workbench}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
   frontend:
@@ -35,3 +55,4 @@ services:
 
 volumes:
   cad-artifacts:
+  pgdata:

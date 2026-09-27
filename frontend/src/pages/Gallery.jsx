@@ -17,9 +17,9 @@ const FEATURED_TAGS = [
 const PER_PAGE = 20;
 
 function formatGalleryDate(value) {
-  if (!value) return '';
+  if (!value) return 'date unknown';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
+  if (Number.isNaN(date.getTime())) return 'date unknown';
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 

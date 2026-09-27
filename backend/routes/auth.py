@@ -13,7 +13,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from jose import ExpiredSignatureError
+from jwt import ExpiredSignatureError
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

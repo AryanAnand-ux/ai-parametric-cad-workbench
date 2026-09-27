@@ -6,7 +6,12 @@ import React from 'react';
 export default function TelemetryHUD({ meshInfo, recompTime }) {
   if (!meshInfo) return null;
 
-  const { dimensions_mm, volume_mm3, is_watertight, body_count } = meshInfo;
+  const { dimensions_mm, volume_mm3, is_watertight, body_count, face_count } = meshInfo;
+
+  const formatFaceCount = (count) => {
+    if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
+    return `${count}`;
+  };
 
   return (
     <div className="sidebar-metrics-bar">
@@ -35,6 +40,12 @@ export default function TelemetryHUD({ meshInfo, recompTime }) {
       {body_count !== undefined && body_count > 1 && (
         <span className="sidebar-metric-chip" title="Disjoint Solid Bodies">
           Bodies: {body_count}
+        </span>
+      )}
+
+      {typeof face_count === 'number' && face_count > 0 && (
+        <span className="sidebar-metric-chip" title="B-Rep Face Count">
+          ⬡ {formatFaceCount(face_count)} faces
         </span>
       )}
 

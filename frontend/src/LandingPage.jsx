@@ -426,6 +426,8 @@ export default function LandingPage({ onEnterApp, onGoToGallery }) {
             <img
               src={kinematicsImg}
               alt="Live CAD Engine Demonstration"
+              width="320"
+              height="190"
               style={{
                 width: '100%',
                 height: '100%',

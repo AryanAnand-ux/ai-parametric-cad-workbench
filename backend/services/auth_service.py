@@ -3,7 +3,7 @@ services/auth_service.py — JWT Authentication & Password Hashing
 =================================================================
 Provides:
   - Password hashing (bcrypt via passlib)
-  - JWT token creation/verification (python-jose)
+  - JWT token creation/verification (PyJWT)
   - FastAPI dependency for extracting current user from Authorization header
 """
 
@@ -14,7 +14,8 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError as JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
