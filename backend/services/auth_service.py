@@ -65,12 +65,13 @@ def create_access_token(user_id: str, email: str) -> str:
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
-def create_refresh_token(user_id: str) -> str:
-    """Create a long-lived JWT refresh token."""
+def create_refresh_token(user_id: str, version: int = 0) -> str:
+    """Create a long-lived JWT refresh token with rotation version."""
     expire = datetime.now(timezone.utc) + timedelta(days=JWT_REFRESH_TOKEN_EXPIRE_DAYS)
     payload = {
         "sub": user_id,
         "type": "refresh",
+        "ver": int(version or 0),
         "exp": expire,
     }
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)

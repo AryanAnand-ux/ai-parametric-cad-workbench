@@ -44,19 +44,14 @@ jobs:
             --tb=short -q
 
       - name: Check pass rate threshold (85%)
+        env:
+          ENVIRONMENT: test
+          GEMINI_API_KEY: placeholder
         run: |
-          python -c "
-          import subprocess, sys
-          result = subprocess.run(
-            ['python', '-m', 'pytest', 'test_schemas.py', 'test_ast_security.py',
-             'test_llm_parser.py', 'test_geometry_validation.py',
-             'test_recompute_validation.py', '--tb=no', '-q', '--co'],
-            capture_output=True, text=True
-          )
-          lines = result.stdout.split('\n')
-          collected = next((l for l in lines if 'selected' in l or 'test' in l), '0')
-          print('Collected:', collected)
-          "
+          python -m pytest \
+            test_schemas.py test_ast_security.py test_llm_parser.py \
+            test_geometry_validation.py test_recompute_validation.py \
+            --tb=short -q
 
       - name: Create benchmark summary
         if: always()

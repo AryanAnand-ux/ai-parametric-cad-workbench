@@ -12,10 +12,14 @@ services:
       ALLOWED_ORIGINS: http://localhost:5173,http://localhost
       ADMIN_TOKEN: ${ADMIN_TOKEN:?Set ADMIN_TOKEN before starting production services}
       RAG_BUILD_ON_STARTUP: "false"
+      TRUST_PROXY: "true"
+      DATABASE_URL: sqlite+aiosqlite:////app/scratch/temp/cad_workbench.db
     volumes:
       - cad-artifacts:/app/scratch/temp
     expose:
       - "8000"
+    # ports:
+    #   - "8000:8000"  # debug only — do not expose backend directly in production
     restart: unless-stopped
 
   frontend:

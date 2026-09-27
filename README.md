@@ -81,7 +81,7 @@ docker-compose up --build
 
 ```bash
 cd backend
-python -m pytest -v    # 60 tests, ~60 seconds
+python -m pytest -v    # 69 tests, ~100 seconds
 ```
 
 ---

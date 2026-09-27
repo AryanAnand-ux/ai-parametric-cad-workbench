@@ -120,13 +120,17 @@ export default function OnboardingTour({ isOpen, onClose }) {
           {/* Step Progress Bar */}
           <div style={{ display: 'flex', gap: '6px', marginBottom: '20px' }}>
             {TOUR_STEPS.map((s, idx) => (
-              <div
+              <button
                 key={s.id}
+                type="button"
                 onClick={() => setCurrentStep(idx)}
+                aria-label={`Go to step ${idx + 1} of ${TOUR_STEPS.length}: ${s.title}`}
                 style={{
                   flex: 1,
                   height: '4px',
                   borderRadius: '2px',
+                  border: 'none',
+                  padding: 0,
                   background: idx === currentStep
                     ? '#474040'
                     : idx < currentStep

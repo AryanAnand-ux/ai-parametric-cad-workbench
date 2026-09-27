@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getGallery, likeDesign, forkDesign } from '../api';
 import ModelThumbnail from '../components/ModelThumbnail';
 
@@ -13,28 +13,42 @@ const FEATURED_TAGS = [
   'manifold', 'aerospace', 'robotics', 'thermal', 'fixture'
 ];
 
+function formatGalleryDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function DesignCard({ item, onFork }) {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(item.like_count || 0);
   const [forking, setForking] = useState(false);
+  const [actionError, setActionError] = useState(null);
 
   const handleLike = async (e) => {
     e.stopPropagation();
     if (liked) return;
+    setActionError(null);
     try {
       const res = await likeDesign(item.id);
       setLikeCount(res.like_count);
       setLiked(true);
-    } catch {/* ignore */}
+    } catch {
+      setActionError('Could not like this design. Please try again.');
+    }
   };
 
   const handleFork = async (e) => {
     e.stopPropagation();
     setForking(true);
+    setActionError(null);
     try {
       const res = await forkDesign(item.id);
       onFork?.(res);
-    } catch {/* ignore */} finally {
+    } catch {
+      setActionError('Could not fork this design. Please try again.');
+    } finally {
       setForking(false);
     }
   };
@@ -151,7 +165,7 @@ function DesignCard({ item, onFork }) {
             by <strong style={{ color: '#474040' }}>{item.author}</strong>
           </span>
           <span style={{ fontSize: '10px', color: '#99908F', fontFamily: 'var(--font-mono)' }}>
-            {new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            {formatGalleryDate(item.created_at)}
           </span>
         </div>
       </div>
@@ -196,6 +210,20 @@ function DesignCard({ item, onFork }) {
           <span>{forking ? 'Forking…' : `Fork (${item.fork_count || 0})`}</span>
         </button>
       </div>
+
+      {/* Inline action error */}
+      {actionError && (
+        <div style={{
+          padding: '6px 12px',
+          fontSize: '11px',
+          color: '#991B1B',
+          background: '#FEE2E2',
+          borderTop: '1px solid #FCA5A5',
+          fontFamily: 'var(--font-sans)',
+        }}>
+          {actionError}
+        </div>
+      )}
     </div>
   );
 }
@@ -211,6 +239,7 @@ export default function Gallery({ onGoToApp }) {
   const [sortBy, setSortBy] = useState('recent');
   const [loading, setLoading] = useState(false);
   const [forkMessage, setForkMessage] = useState(null);
+  const forkTimerRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -245,8 +274,13 @@ export default function Gallery({ onGoToApp }) {
 
   const handleFork = (res) => {
     setForkMessage(`✓ Forked as "${res.part_name}" — open Workspaces to edit it.`);
-    setTimeout(() => setForkMessage(null), 5000);
+    if (forkTimerRef.current) clearTimeout(forkTimerRef.current);
+    forkTimerRef.current = setTimeout(() => setForkMessage(null), 5000);
   };
+
+  useEffect(() => () => {
+    if (forkTimerRef.current) clearTimeout(forkTimerRef.current);
+  }, []);
 
   return (
     <div style={{ minHeight: '100vh', background: '#F6F6F0', fontFamily: 'var(--font-sans)' }}>
@@ -303,6 +337,7 @@ export default function Gallery({ onGoToApp }) {
         <form onSubmit={handleSearch} style={{ maxWidth: '520px', margin: '0 auto', display: 'flex', gap: '8px' }}>
           <input
             type="text"
+            aria-label="Search community designs"
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
             placeholder="Search brackets, heatsinks, gears…"
@@ -375,6 +410,7 @@ export default function Gallery({ onGoToApp }) {
         {/* Sort */}
         <select
           value={sortBy}
+          aria-label="Sort designs"
           onChange={e => { setSortBy(e.target.value); setPage(1); }}
           style={{
             padding: '7px 12px', border: '1px solid rgba(71,64,64,0.2)', borderRadius: '6px',

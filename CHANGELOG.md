@@ -8,8 +8,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Share deep links** — `#model=`/`#embed=` URLs open the model directly in the workbench
+- **Refresh-token rotation** — version column + reuse detection (old token → 401)
+- **PII scrubber** — emails/phones/secrets redacted before LLM calls
+- **SEO + nginx hardening** — OG/Twitter meta, gzip, asset caching, security headers
+
 ### Fixed
-- **CI dependency gap** — Added `sqlalchemy[asyncio]` + explicit `greenlet` + `bcrypt` to `backend/requirements.txt` (fixed 8 consecutive CI collection failures); removed unused `sse-starlette`
+- **AST sandbox bypasses** — dunder/alias/lambda blocks + 6 adversarial tests
+- **Anonymous production compute** — 403 gate when `ENVIRONMENT==production`
+- **Artifact auth** — download ownership checks; 12-char script IDs
+- **Login abuse** — 10/min/IP limiter on login/register
+- **Benchmark gate** — threshold step now executes pytest instead of collect-only
+- **SSE/streaming UX** — cancellable generation, undo persistence, tour-key, sidebar loop, gallery error surfacing, demo creds removed
+- **CI dependency gap** — `sqlalchemy[asyncio]` + explicit `greenlet` + `bcrypt` (fixed 8 consecutive CI collection failures); removed unused `sse-starlette`
 
 ### Planned
 - PostgreSQL migration (replace SQLite for production)

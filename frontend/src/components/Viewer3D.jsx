@@ -333,7 +333,7 @@ const Viewer3D = forwardRef(function Viewer3D(
       className="viewer-canvas"
       shadows={{ type: THREE.PCFShadowMap }}
       camera={{ position: [85, 65, 85], fov: 45 }}
-      gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }}
+      gl={{ antialias: true, alpha: true }}
       onPointerMove={(e) => {
         if (onCoordsUpdate && e.point) {
           onCoordsUpdate({

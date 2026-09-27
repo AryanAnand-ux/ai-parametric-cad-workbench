@@ -137,6 +137,34 @@ def is_safe_script_id(script_id: str) -> bool:
 # AST Security Sandbox
 # ---------------------------------------------------------------------------
 
+DANGEROUS_NAME_REFS = {
+    "getattr", "setattr", "delattr", "vars", "dir", "hasattr",
+    "eval", "exec", "open", "compile", "input", "globals", "locals",
+    "breakpoint", "memoryview", "exit", "quit", "help",
+}
+
+
+def _collect_dangerous_aliases(tree: ast.AST) -> set[str]:
+    """Collect local aliases of the form `alias = <dangerous builtin Name>`.
+
+    Walks all Assign / AnnAssign nodes (covers top-level and function-level
+    scopes) so `g = getattr` style bypasses can be flagged at use sites.
+    """
+    dangerous = set(BLOCKED_BUILTINS) | DANGEROUS_NAME_REFS | {"__import__"}
+    aliases: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            if isinstance(node.value, ast.Name) and node.value.id in dangerous:
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        aliases.add(target.id)
+        elif isinstance(node, ast.AnnAssign):
+            if isinstance(node.value, ast.Name) and node.value.id in dangerous:
+                if isinstance(node.target, ast.Name):
+                    aliases.add(node.target.id)
+    return aliases
+
+
 def validate_script_safety(python_code: str) -> tuple[bool, str]:
     """
     Parses the script with Python's AST module and verifies:
@@ -151,7 +179,21 @@ def validate_script_safety(python_code: str) -> tuple[bool, str]:
     except SyntaxError as e:
         return False, f"Syntax error: {e}"
 
+    dangerous_aliases = _collect_dangerous_aliases(tree)
+
     for node in ast.walk(tree):
+        # 0. Deny high-risk syntax nodes outright
+        if isinstance(node, ast.Lambda):
+            return False, "Blocked lambda expression is forbidden in CAD scripts"
+        elif isinstance(node, (ast.Yield, ast.YieldFrom)):
+            return False, "Blocked yield expression is forbidden in CAD scripts"
+        elif isinstance(node, ast.Await):
+            return False, "Blocked await expression is forbidden in CAD scripts"
+        elif isinstance(node, ast.Global):
+            return False, "Blocked global statement is forbidden in CAD scripts"
+        elif isinstance(node, ast.Nonlocal):
+            return False, "Blocked nonlocal statement is forbidden in CAD scripts"
+
         # 1. Check `import X` statements
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -171,6 +213,8 @@ def validate_script_safety(python_code: str) -> tuple[bool, str]:
             if isinstance(node.func, ast.Name):
                 if node.func.id in BLOCKED_BUILTINS:
                     return False, f"Blocked builtin call: '{node.func.id}()' is forbidden in CAD scripts"
+                if node.func.id in dangerous_aliases:
+                    return False, f"Blocked dangerous alias: '{node.func.id}()' is forbidden"
             elif isinstance(node.func, ast.Attribute):
                 if node.func.attr in BLOCKED_BUILTINS:
                     return False, f"Blocked attribute call: '{node.func.attr}()' is forbidden"
@@ -179,6 +223,8 @@ def validate_script_safety(python_code: str) -> tuple[bool, str]:
         elif isinstance(node, ast.Attribute):
             if node.attr in BLOCKED_ATTRIBUTES:
                 return False, f"Blocked sensitive attribute access: '{node.attr}'"
+            if node.attr.startswith("__"):
+                return False, f"Blocked dunder attribute access: '{node.attr}'"
 
         # 5. Check direct reference to __builtins__ / __import__
         elif isinstance(node, ast.Name):
@@ -186,6 +232,11 @@ def validate_script_safety(python_code: str) -> tuple[bool, str]:
                 return False, f"Blocked direct reference: '{node.id}'"
             if node.id in BLOCKED_RUNTIME_NAMES:
                 return False, f"Blocked runtime reference: '{node.id}'"
+            if isinstance(node.ctx, ast.Load):
+                if node.id in dangerous_aliases:
+                    return False, f"Blocked dangerous alias: '{node.id}'"
+                if node.id in DANGEROUS_NAME_REFS:
+                    return False, f"Blocked dangerous reference: '{node.id}'"
 
     return True, "OK"
 

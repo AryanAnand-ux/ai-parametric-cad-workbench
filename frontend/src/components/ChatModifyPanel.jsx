@@ -41,7 +41,7 @@ export default function ChatModifyPanel({
 
       {/* Chat Conversation History */}
       {chatHistory.length > 0 && (
-        <div className="chat-history">
+        <div className="chat-history" role="log" aria-live="polite">
           {chatHistory.map((msg, i) => (
             <div
               key={i}

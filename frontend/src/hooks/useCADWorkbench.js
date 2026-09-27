@@ -1,10 +1,27 @@
-import { useReducer, useCallback, useRef } from 'react';
+import { useReducer, useCallback, useRef, useEffect } from 'react';
+
+const STORAGE_KEY = 'cad_last_model';
+const STORAGE_VERSION = 1;
 
 function getPersistedModel() {
   try {
-    return JSON.parse(localStorage.getItem('cad_last_model') || 'null') || {};
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || {};
+    // Treat missing / mismatched cache versions as stale
+    if (parsed.version !== STORAGE_VERSION) return {};
+    return parsed;
   } catch {
     return {};
+  }
+}
+
+function persistModel(envelope) {
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ version: STORAGE_VERSION, ...envelope })
+    );
+  } catch (e) {
+    console.warn('[Persist] Could not save model to localStorage:', e);
   }
 }
 
@@ -93,29 +110,22 @@ function cadWorkbenchReducer(state, action) {
       });
 
       // Save to localStorage
-      try {
-        localStorage.setItem(
-          'cad_last_model',
-          JSON.stringify({
-            generationId: res.generation_id ?? null,
-            scriptId: res.script_id,
-            partName: res.part_name,
-            description: res.description,
-            pythonCode: res.python_code,
-            parameters: res.parameters || [],
-            paramValues: initialValues,
-            meshUrl: res.mesh_url,
-            stepUrl: res.step_url,
-            objUrl: res.obj_url,
-            glbUrl: res.glb_url,
-            meshInfo: res.mesh_info || {},
-            designMode: res.design_mode || 'single_solid',
-            components: res.components || null,
-          })
-        );
-      } catch (e) {
-        console.warn('[Persist] Could not save model to localStorage:', e);
-      }
+      persistModel({
+        generationId: res.generation_id ?? null,
+        scriptId: res.script_id,
+        partName: res.part_name,
+        description: res.description,
+        pythonCode: res.python_code,
+        parameters: res.parameters || [],
+        paramValues: initialValues,
+        meshUrl: res.mesh_url,
+        stepUrl: res.step_url,
+        objUrl: res.obj_url,
+        glbUrl: res.glb_url,
+        meshInfo: res.mesh_info || {},
+        designMode: res.design_mode || 'single_solid',
+        components: res.components || null,
+      });
 
       return {
         ...state,
@@ -181,7 +191,9 @@ function cadWorkbenchReducer(state, action) {
         partName: state.partName,
         description: state.description,
         pythonCode: state.pythonCode,
-        parameters: [...state.parameters],
+        parameters: typeof structuredClone === 'function'
+          ? structuredClone(state.parameters)
+          : JSON.parse(JSON.stringify(state.parameters)),
         paramValues: { ...state.paramValues },
         meshUrl: state.meshUrl,
         stepUrl: state.stepUrl,
@@ -202,6 +214,23 @@ function cadWorkbenchReducer(state, action) {
     case 'POP_SNAPSHOT': {
       if (state.modelHistory.length === 0) return state;
       const [lastState, ...remaining] = state.modelHistory;
+      // Keep the persisted cache in sync with the restored undo state
+      persistModel({
+        generationId: state.generationId ?? null,
+        scriptId: lastState.scriptId,
+        partName: lastState.partName,
+        description: lastState.description,
+        pythonCode: lastState.pythonCode,
+        parameters: lastState.parameters || [],
+        paramValues: lastState.paramValues || {},
+        meshUrl: lastState.meshUrl,
+        stepUrl: lastState.stepUrl,
+        objUrl: lastState.objUrl ?? null,
+        glbUrl: lastState.glbUrl ?? null,
+        meshInfo: lastState.meshInfo || {},
+        designMode: lastState.designMode || 'single_solid',
+        components: lastState.components || null,
+      });
       return {
         ...state,
         modelHistory: remaining,
@@ -246,7 +275,9 @@ function cadWorkbenchReducer(state, action) {
 export function useCADWorkbench() {
   const [state, dispatch] = useReducer(cadWorkbenchReducer, initialState);
   const paramValuesRef = useRef(state.paramValues);
-  paramValuesRef.current = state.paramValues;
+  useEffect(() => {
+    paramValuesRef.current = state.paramValues;
+  }, [state.paramValues]);
 
   const setField = useCallback((field, value) => {
     dispatch({ type: 'SET_FIELD', field, value });

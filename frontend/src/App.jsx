@@ -100,7 +100,7 @@ const QUICK_MODIFICATIONS = [
   'Hollow out interior with 3mm shell'
 ];
 
-export default function App({ onGoHome, onGoToGallery }) {
+export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
   const {
     state,
     paramValuesRef,
@@ -198,6 +198,7 @@ export default function App({ onGoHome, onGoToGallery }) {
   const debounceTimerRef = useRef(null);
   const scrollTimerRef = useRef(null);
   const recomputeSequenceRef = useRef(0);
+  const generateAbortRef = useRef(null);
 
   // Health check on mount + debounce timer cleanup + tour persistence
   useEffect(() => {
@@ -213,6 +214,7 @@ export default function App({ onGoHome, onGoToGallery }) {
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+      if (generateAbortRef.current) generateAbortRef.current.abort();
     };
   }, [setBackendStatus, setShowOnboarding]);
 
@@ -248,6 +250,11 @@ export default function App({ onGoHome, onGoToGallery }) {
     const activePrompt = overridePrompt || prompt;
     if (!activePrompt.trim() || loading) return;
 
+    // Cancel any in-flight generation stream before starting a new one
+    if (generateAbortRef.current) generateAbortRef.current.abort();
+    const controller = new AbortController();
+    generateAbortRef.current = controller;
+
     setLoading(true);
     setError(null);
     setChatHistory([]);
@@ -258,6 +265,8 @@ export default function App({ onGoHome, onGoToGallery }) {
       attempts: 0,
     });
 
+    const isAborted = (err) => err?.aborted || err?.name === 'AbortError' || controller.signal.aborted;
+
     try {
       const res = await generatePartStream(activePrompt, (evt) => {
         updateStream({
@@ -266,14 +275,23 @@ export default function App({ onGoHome, onGoToGallery }) {
           message: evt.message,
           attempts: evt.phase === 'self_correction' ? (streamAttempts + 1) : streamAttempts,
         });
-      });
+      }, controller.signal);
       applyPartResponse(res);
     } catch (streamErr) {
+      if (isAborted(streamErr)) {
+        updateStream({ phase: 'rag_retrieval', progress: 0, message: '', attempts: 0 });
+        return;
+      }
       console.warn('[SSE stream fallback to standard POST]', streamErr);
       try {
         const res = await generatePart(activePrompt);
+        if (controller.signal.aborted) return;
         applyPartResponse(res);
       } catch (err) {
+        if (isAborted(err)) {
+          updateStream({ phase: 'rag_retrieval', progress: 0, message: '', attempts: 0 });
+          return;
+        }
         console.error('[Generate error]', err);
         const detail = err.response?.data?.detail;
         setError(typeof detail === 'string' ? detail : (detail?.error || err.message || streamErr.message || 'Generation failed. Check backend log.'));
@@ -284,7 +302,7 @@ export default function App({ onGoHome, onGoToGallery }) {
   };
 
   // Select and load a saved generation from the workspace drawer
-  const handleSelectGeneration = async (genId) => {
+  const handleSelectGeneration = useCallback(async (genId) => {
     try {
       setLoading(true);
       updateStream({
@@ -317,7 +335,16 @@ export default function App({ onGoHome, onGoToGallery }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [applyPartResponse, setError, setLoading, setShowProjectSidebar, updateStream]);
+
+  // Deep-link support: load a shared model (#model=<id> / #embed=<id>) on mount
+  const shareLinkAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!initialGenerationId || shareLinkAppliedRef.current) return;
+    if (generationId || scriptId) return;
+    shareLinkAppliedRef.current = true;
+    handleSelectGeneration(initialGenerationId);
+  }, [initialGenerationId, generationId, scriptId, handleSelectGeneration]);
 
   // Publish active design to public community gallery
   const handlePublishToGallery = async () => {
@@ -1173,7 +1200,7 @@ export default function App({ onGoHome, onGoToGallery }) {
         onClose={() => {
           setShowOnboarding(false);
           try {
-            localStorage.setItem('cad_onboarding_completed', 'true');
+            localStorage.setItem('cad_tour_completed', '1');
           } catch {
             // ignore
           }

@@ -69,7 +69,7 @@ export default function ParameterSlider({ param, value, onChange }) {
               value={displayVal}
               min={param.min}
               max={param.max}
-              step={param.step}
+              step={stepVal}
               onChange={handleChange}
             />
             {unit && <span className="param-unit-badge">{unit}</span>}
@@ -109,7 +109,7 @@ export default function ParameterSlider({ param, value, onChange }) {
             type="range"
             min={param.min}
             max={param.max}
-            step={param.step}
+            step={stepVal}
             value={numValue}
             onChange={handleChange}
             style={{

@@ -19,15 +19,15 @@ export default function ProjectSidebar({
       setLoading(true);
       const projs = await listProjects();
       setProjects(projs);
-      if (projs.length > 0 && !selectedProjectId) {
-        setSelectedProjectId(projs[0].id);
+      if (projs.length > 0) {
+        setSelectedProjectId((prev) => prev ?? projs[0].id);
       }
     } catch (err) {
       console.error('Failed to load projects:', err);
     } finally {
       setLoading(false);
     }
-  }, [selectedProjectId]);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {

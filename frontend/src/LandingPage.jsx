@@ -1397,7 +1397,7 @@ export default function LandingPage({ onEnterApp, onGoToGallery }) {
               a: 'The frontend is built with React 18, Vite, Three.js / React Three Fiber for WebGL rendering. The backend is built with Python FastAPI, OpenCASCADE Technology 7.8, build123d parametric modeling framework, and Gemini generative reasoning.',
             },
           ].map((item, idx) => (
-            <FaqItem key={idx} question={item.q} answer={item.a} />
+            <FaqItem key={idx} index={idx} question={item.q} answer={item.a} />
           ))}
         </div>
       </section>
@@ -1770,12 +1770,15 @@ export default function LandingPage({ onEnterApp, onGoToGallery }) {
   );
 }
 
-function FaqItem({ question, answer }) {
+function FaqItem({ index, question, answer }) {
   const [open, setOpen] = useState(false);
+  const panelId = `faq-panel-${index ?? 0}`;
   return (
     <div style={{ borderBottom: '1px solid rgba(71, 64, 64, 0.15)' }}>
       <button
         onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        aria-controls={panelId}
         style={{
           width: '100%',
           display: 'flex',
@@ -1814,7 +1817,9 @@ function FaqItem({ question, answer }) {
         maxHeight: open ? '320px' : 0,
         overflow: 'hidden',
         transition: 'max-height 0.35s ease',
-      }}>
+      }}
+        id={panelId}
+      >
         <p style={{
           fontSize: '14px',
           lineHeight: 1.75,

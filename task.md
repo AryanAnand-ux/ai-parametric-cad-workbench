@@ -1,7 +1,7 @@
 # Task Board
 ## AI Parametric CAD Workbench
 
-**Last Updated:** September 26, 2026  
+**Last Updated:** September 27, 2026  
 **Sprint:** Active Development  
 
 > This file tracks current, upcoming, and completed development tasks.
@@ -81,13 +81,17 @@
 - [x] Rate limit headers — `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` on API responses + 429 detail
 - [x] Gallery live search & discipline chips — debounced client-side search + extended tags filter
 - [x] CI greenlet fix — `sqlalchemy[asyncio]` + explicit `greenlet` + `bcrypt` in requirements (8 straight CI failures fixed, suite green)
+- [x] Pre-deploy security hardening — AST allowlist (dunder/alias/lambda blocks + 6 adversarial tests), prod-only auth gate on compute endpoints, download ownership checks, refresh-token rotation, login rate limits, PII scrubber (69 tests passing)
+- [x] Share-link routes — `#model=`/`#embed=` now deep-link into workbench via `initialGenerationId`
+- [x] SSE cancellation + state fixes — AbortController on generate, paramValuesRef via useEffect, undo deep-clone + persist, single tour key, sidebar refetch fix
+- [x] Deploy config — DB on volumed path, TRUST_PROXY wiring, real benchmark gate, demo creds removed, SEO meta + nginx hardening (gzip/caching/security headers)
 
 
 ---
 
 ## Notes
 
-- Backend test suite: `cd backend && python -m pytest -v` (60 tests, ~60s)
+- Backend test suite: `cd backend && python -m pytest -v` (69 tests, ~100s)
 - Frontend dev server: `cd frontend && npm run dev` (Vite, port 5173)
 - Backend dev server: `cd backend && uvicorn main:app --reload --port 8000`
 - RAG index rebuild: `python -c "from services.rag_service import RAGService; RAGService.build_index()"`

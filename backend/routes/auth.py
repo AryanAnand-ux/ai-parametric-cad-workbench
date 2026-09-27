@@ -8,10 +8,11 @@ GET  /api/auth/me        — Get current user profile
 """
 
 import re
+import time
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +32,25 @@ from services.auth_service import (
 logger = logging.getLogger("cad_workbench.auth_routes")
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
+
+
+# ─── Login/Register Rate Limit (10/min per IP, local to avoid circular import) ─
+_AUTH_RATE_LIMIT = 10
+_auth_attempts: dict[str, list[float]] = {}
+
+
+def _check_auth_rate_limit(client_ip: str) -> None:
+    """Sliding-window 10/min per-IP limiter for login/register."""
+    now = time.time()
+    cutoff = now - 60.0
+    attempts = [t for t in _auth_attempts.get(client_ip, []) if t > cutoff]
+    if len(attempts) >= _AUTH_RATE_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Maximum 10 requests per minute allowed.",
+        )
+    attempts.append(now)
+    _auth_attempts[client_ip] = attempts
 
 
 # ─── Request / Response Schemas ─────────────────────────────────────────────
@@ -75,8 +95,9 @@ class UserProfileResponse(BaseModel):
 # ─── Endpoints ──────────────────────────────────────────────────────────────
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(payload: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Create a new user account and return JWT tokens."""
+    _check_auth_rate_limit(request.client.host if request.client else "unknown")
     # Check if email already exists
     result = await db.execute(select(User).where(User.email == payload.email.lower()))
     if result.scalar_one_or_none():
@@ -98,7 +119,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     logger.info(f"[AUTH] New user registered: {user.email} (id={user.id[:8]})")
 
     access_token = create_access_token(user.id, user.email)
-    refresh_token = create_refresh_token(user.id)
+    refresh_token = create_refresh_token(user.id, getattr(user, "refresh_token_version", 0) or 0)
 
     return AuthResponse(
         access_token=access_token,
@@ -113,8 +134,9 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
 
 
 @router.post("/login", response_model=AuthResponse)
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(payload: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Authenticate with email + password and return JWT tokens."""
+    _check_auth_rate_limit(request.client.host if request.client else "unknown")
     result = await db.execute(select(User).where(User.email == payload.email.lower()))
     user = result.scalar_one_or_none()
 
@@ -133,7 +155,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     logger.info(f"[AUTH] User login: {user.email}")
 
     access_token = create_access_token(user.id, user.email)
-    refresh_token = create_refresh_token(user.id)
+    refresh_token = create_refresh_token(user.id, getattr(user, "refresh_token_version", 0) or 0)
 
     return AuthResponse(
         access_token=access_token,
@@ -155,6 +177,7 @@ async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_
         if token_data.get("type") != "refresh":
             raise HTTPException(status_code=401, detail="Invalid token type.")
         user_id = token_data.get("sub")
+        token_ver = token_data.get("ver", 0)
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token.")
 
@@ -163,8 +186,17 @@ async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_
     if not user:
         raise HTTPException(status_code=401, detail="User not found.")
 
+    current_ver = getattr(user, "refresh_token_version", 0) or 0
+    if int(token_ver or 0) != int(current_ver):
+        logger.warning(f"[AUTH] Refresh token reuse detected for user_id={user_id}")
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token.")
+
+    user.refresh_token_version = int(current_ver) + 1
+    await db.commit()
+    await db.refresh(user)
+
     new_access = create_access_token(user.id, user.email)
-    new_refresh = create_refresh_token(user.id)
+    new_refresh = create_refresh_token(user.id, user.refresh_token_version or 0)
 
     return AuthResponse(
         access_token=new_access,

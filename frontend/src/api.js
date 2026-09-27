@@ -162,9 +162,10 @@ export async function generatePart(prompt) {
  * Stream CAD generation with real-time SSE progress events.
  * @param {string} prompt - Part description
  * @param {(event: {phase: string, message: string, progress: number}) => void} onProgress
+ * @param {AbortSignal} [signal] - Optional abort signal to cancel the stream
  * @returns {Promise<GenerateResponse>}
  */
-export async function generatePartStream(prompt, onProgress) {
+export async function generatePartStream(prompt, onProgress, signal) {
   const url = `${BASE_URL.replace(/\/+$/, '')}/api/generate/stream`;
   const token = getAuthToken();
   const headers = {
@@ -175,11 +176,20 @@ export async function generatePartStream(prompt, onProgress) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ prompt }),
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ prompt }),
+      signal,
+    });
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      err.aborted = true;
+    }
+    throw err;
+  }
 
   if (!response.ok) {
     const errJson = await response.json().catch(() => ({ detail: 'Network request failed' }));
@@ -191,6 +201,7 @@ export async function generatePartStream(prompt, onProgress) {
   let buffer = '';
   let finalResult = null;
 
+  try {
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -220,8 +231,21 @@ export async function generatePartStream(prompt, onProgress) {
       }
     }
   }
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      err.aborted = true;
+    }
+    try { reader.cancel(); } catch { /* ignore */ }
+    throw err;
+  }
 
   if (!finalResult) {
+    if (signal?.aborted) {
+      const abortErr = new Error('Generation aborted');
+      abortErr.name = 'AbortError';
+      abortErr.aborted = true;
+      throw abortErr;
+    }
     throw new Error('Stream terminated before generation completed');
   }
 

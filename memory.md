@@ -1,7 +1,7 @@
 # Project Memory
 ## AI Parametric CAD Workbench
 
-**Last Updated:** September 26, 2026  
+**Last Updated:** September 27, 2026  
 
 > This file is the living memory of the project — key decisions, lessons learned, known issues, environment context, and session notes. Update it after any significant decision or debugging session.
 
@@ -273,6 +273,18 @@ docker-compose up --build
 - **Fix:** `sqlalchemy[asyncio]>=2.0.0` + explicit `greenlet>=3.0.0` + explicit `bcrypt>=4.1.0` (`auth_service.py` imports `bcrypt` directly). Removed dead `sse-starlette` dep (SSE uses `fastapi.responses.StreamingResponse`; nothing imports `sse_starlette`).
 - **Verified:** 60/60 local tests pass; CI run `36206718946` green (Backend + Frontend).
 - **Docs drift fixed in same pass:** test counts 33/41/55 → 60, React 18 → 19, `sse-starlette` → `StreamingResponse` in `architecture.md`, stale `docs/review/` link in `README.md` → `CHANGELOG.md`, CI job name Node.js 20 → 22.
+
+## 10. Session Notes — September 27, 2026 (Pre-Deploy Security Hardening)
+
+Two specialist passes (backend security + frontend hardening), verified 69/69 tests + Vite build + 0 lint errors:
+- **AST sandbox → allowlist-style**: generic `__*` attribute block, dangerous-name reference block (getattr/setattr/vars/dir/hasattr/eval/...), `alias = <dangerous>` assignment tracking, Lambda/Yield/Await/Global/Nonlocal denied. 6 adversarial tests added (alias, concat-dunder, `__class__` chain, vars/dir/hasattr, lambda). Old messages preserved.
+- **Prod-only compute gate**: generate/stream/recompute/modify return 403 anonymously when `ENVIRONMENT==production`; guest mode unchanged in dev/test.
+- **Download ownership**: missing record (legacy/anon) / `is_public` / owner allowed, else 403. Script IDs now 12 hex chars.
+- **Refresh rotation** via `User.refresh_token_version` (+SQLite auto-migration); reuse → 401. **Login/register** 10/min/IP limiter.
+- **PII scrubber** (`test_pii_scrub.py`, 3 tests): emails/phones/`sk-`/AKIA/`ghp_` redacted pre-LLM.
+- **Proxy-aware**: `ProxyHeadersMiddleware` only when `TRUST_PROXY=true` (compose sets it); `DATABASE_URL` points at volumed `/app/scratch/temp`; benchmark threshold step now really runs pytest.
+- **Frontend**: `#model=`/`#embed=` deep links load the model; SSE AbortController (resubmit/unmount, no error on cancel); ref/effect, undo persist, tour-key, sidebar-loop, slider-step, gallery-errors, AuthModal creds removed, aria attrs, storage version guard, SEO meta, nginx gzip/caching/security headers, `preserveDrawingBuffer` dropped.
+- Test counts: 60 → 69 (13 files). CI subset: 8 files / 48 tests.
 
 ### Changes Made (docs & cleanup)
 

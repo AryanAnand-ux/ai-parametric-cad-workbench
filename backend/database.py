@@ -78,6 +78,15 @@ async def create_tables():
                         for col_name, col_def in migrations:
                             if col_name not in existing:
                                 cursor.execute(f"ALTER TABLE generations ADD COLUMN {col_name} {col_def}")
+                    cursor.execute("PRAGMA table_info(users)")
+                    existing_users = {row[1] for row in cursor.fetchall()}
+                    if existing_users:  # Table exists
+                        user_migrations = [
+                            ("refresh_token_version", "INTEGER DEFAULT 0"),
+                        ]
+                        for col_name, col_def in user_migrations:
+                            if col_name not in existing_users:
+                                cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
                 except Exception as e:
                     # Never swallow migration failures silently — a half-migrated
                     # schema causes confusing errors later. Production uses Alembic.

@@ -89,7 +89,7 @@ Minor_project/
 │   │   └── chroma_db/          # Persistent ChromaDB vector store (121 docs)
 │   ├── requirements.txt
 │   ├── pytest.ini
-│   └── test_*.py               # 12 test files (60 tests total)
+│   └── test_*.py               # 13 test files (69 tests total)
 │
 ├── frontend/
 │   ├── src/
@@ -282,7 +282,7 @@ See `backend/.env.example` for full list. Key variables:
 
 ### 6.4 CI/CD
 - **Full-Stack CI/CD** (`.github/workflows/ci.yml`): Triggers on every push and pull request to `main` touching `backend/**` or `frontend/**`.
-  - Backend job: Python 3.11, pip dependencies, runs 42-test core pytest suite.
+  - Backend job: Python 3.11, pip dependencies, runs 48-test core pytest suite (8 files; full suite is 13 files / 69 tests).
   - Frontend job: Node.js 22, npm clean install (`npm ci`), builds production bundle (`npm run build`).
 - **Benchmark Suite** (`.github/workflows/benchmark.yml`): Weekly automated benchmark suite (Monday 06:00 UTC).
   - Enforces 85% pass threshold across CAD archetypes and RAG retrieval coverage.

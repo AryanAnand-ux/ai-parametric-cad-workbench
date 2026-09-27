@@ -90,3 +90,56 @@ sys.modules["builtins"].__dict__["__import__"]("os")
     is_safe, msg = validate_script_safety(code)
     assert is_safe is False
     assert "Blocked" in msg
+
+
+def test_ast_sandbox_blocks_getattr_alias_bypass():
+    code = """
+g = getattr
+x = g(obj, "secret")
+"""
+    is_safe, msg = validate_script_safety(code)
+    assert is_safe is False
+    assert "Blocked" in msg
+
+
+def test_ast_sandbox_blocks_string_concat_dunder_via_getattr():
+    code = '''
+x = getattr(obj, "__cla" + "ss__")
+'''
+    is_safe, msg = validate_script_safety(code)
+    assert is_safe is False
+    assert "Blocked" in msg
+
+
+def test_ast_sandbox_blocks_dunder_class_chain():
+    code = """
+x = ().__class__.__base__
+"""
+    is_safe, msg = validate_script_safety(code)
+    assert is_safe is False
+    assert "Blocked" in msg
+
+
+def test_ast_sandbox_blocks_vars_dir_hasattr():
+    for snippet in ("x = vars(obj)", "x = dir(obj)", "x = hasattr(obj, 'a')"):
+        is_safe, msg = validate_script_safety(snippet)
+        assert is_safe is False, snippet
+        assert "Blocked" in msg
+
+
+def test_ast_sandbox_blocks_lambda_exfil():
+    code = """
+f = lambda x: x
+"""
+    is_safe, msg = validate_script_safety(code)
+    assert is_safe is False
+    assert "Blocked" in msg
+
+
+def test_ast_sandbox_blocks_dunder_attr_on_innocent_object():
+    code = """
+x = box.__dict__
+"""
+    is_safe, msg = validate_script_safety(code)
+    assert is_safe is False
+    assert "Blocked" in msg

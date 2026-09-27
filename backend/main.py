@@ -2,6 +2,7 @@
 FastAPI Application Entry Point — AI-Driven Parametric CAD Workbench API
 """
 import asyncio
+import os
 import re
 import uuid
 import time
@@ -13,6 +14,11 @@ from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Request, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+try:
+    from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
+except ImportError:  # older starlette without proxy_headers module
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+from sqlalchemy import select
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -162,6 +168,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+if os.getenv("TRUST_PROXY", "false").strip().lower() in ("true", "1", "yes"):
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+
 # CORS: allow_credentials requires explicit origins (not wildcard)
 # Use ["*"] without credentials for open dev access
 app.add_middleware(
@@ -261,6 +270,8 @@ async def generate_part(
     5. Returns STL mesh_url, STEP step_url, parameters, and mesh metrics.
     6. Persists to database if user is authenticated.
     """
+    if ENVIRONMENT == "production" and current_user is None:
+        raise HTTPException(status_code=403, detail="Authentication required. Production compute requires login.")
     client_ip = request.client.host if request.client else "unknown"
     remaining, reset_in = await generate_limiter.check(client_ip)
     if response:
@@ -268,7 +279,7 @@ async def generate_part(
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(reset_in)
 
-    script_id = f"part_{uuid.uuid4().hex[:8]}"
+    script_id = f"part_{uuid.uuid4().hex[:12]}"
     self_correction_attempts = 0
     model_used = "unknown"
 
@@ -414,12 +425,14 @@ async def generate_part_stream(
     Server-Sent Events (SSE) Streaming Generation Endpoint.
     Streams real-time pipeline phase updates to client, then delivers final result.
     """
+    if ENVIRONMENT == "production" and current_user is None:
+        raise HTTPException(status_code=403, detail="Authentication required. Production compute requires login.")
     client_ip = request.client.host if request.client else "unknown"
     await generate_limiter.check(client_ip)
 
     async def event_generator():
         import json
-        script_id = f"part_{uuid.uuid4().hex[:8]}"
+        script_id = f"part_{uuid.uuid4().hex[:12]}"
         self_correction_attempts = 0
         model_used = "unknown"
 
@@ -545,11 +558,18 @@ async def generate_part_stream(
 # ---------------------------------------------------------------------------
 
 @app.post("/api/recompute", response_model=RecomputeResponse)
-async def recompute_part(payload: RecomputeRequest, request: Request = None, response: Response = None):
+async def recompute_part(
+    payload: RecomputeRequest,
+    request: Request = None,
+    response: Response = None,
+    current_user: Optional[User] = Depends(get_optional_user),
+):
     """
     Fast Parametric Recomputation (<200ms target).
     Injects updated slider values into the PARAMS block and re-executes — NO LLM call.
     """
+    if ENVIRONMENT == "production" and current_user is None:
+        raise HTTPException(status_code=403, detail="Authentication required. Production compute requires login.")
     if request:
         client_ip = request.client.host if request.client else "unknown"
         remaining, reset_in = await recompute_limiter.check(client_ip)
@@ -676,6 +696,8 @@ async def download_model(
     script_id: str,
     fmt: str,
     x_admin_token: str | None = Header(default=None),
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Download production-ready CAD artifacts (STEP / STL / PY).
@@ -683,6 +705,23 @@ async def download_model(
     """
     if not is_safe_script_id(script_id):
         raise HTTPException(status_code=400, detail="Invalid script identifier.")
+
+    # Ownership gate: allow legacy/anon artifacts (no DB record), public
+    # generations, or the owning user. Otherwise require authentication.
+    try:
+        if db is not None:
+            from models.project import Generation
+            result = await db.execute(select(Generation).where(Generation.script_id == script_id))
+            generation = result.scalars().first()
+            if generation is not None:
+                is_public = bool(getattr(generation, "is_public", False))
+                is_owner = bool(current_user and generation.user_id == current_user.id)
+                if not (is_public or is_owner):
+                    raise HTTPException(status_code=403, detail="Access denied. This model is private.")
+    except HTTPException:
+        raise
+    except Exception as dbe:
+        logger.warning(f"[DOWNLOAD] Ownership lookup failed for {script_id}: {dbe}")
     
     fmt_lower = fmt.lower().strip(".")
     allowed_formats = {
@@ -752,6 +791,8 @@ async def modify_part(
     3. Self-correction loop (up to 3 retries) on execution failure.
     4. Returns updated STL mesh_url, STEP step_url, parameters, and mesh metrics.
     """
+    if ENVIRONMENT == "production" and current_user is None:
+        raise HTTPException(status_code=403, detail="Authentication required. Production compute requires login.")
     client_ip = request.client.host if request.client else "unknown"
     remaining, reset_in = await modify_limiter.check(client_ip)
     if response:

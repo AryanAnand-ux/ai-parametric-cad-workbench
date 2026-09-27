@@ -32,6 +32,38 @@ logger = logging.getLogger("cad_workbench.llm_service")
 
 
 # ---------------------------------------------------------------------------
+# PII Scrubber (redact emails, phones, secrets before LLM calls)
+# ---------------------------------------------------------------------------
+
+_EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+_SECRET_RES = [
+    re.compile(r"sk-[A-Za-z0-9\-_]{8,}"),
+    re.compile(r"AKIA[0-9A-Z]{16}"),
+    re.compile(r"gh[pousr]_[A-Za-z0-9]{8,}"),
+    re.compile(r"Bearer\s+[A-Za-z0-9\-._~+/=]{8,}"),
+]
+_PHONE_RE = re.compile(r"\+?\d[\d\s\-\.\(\)]{6,}\d")
+
+
+def scrub_pii(text: str) -> str:
+    """Redact emails, phone-like digit runs, and secret-like tokens."""
+    if not text:
+        return text
+    redacted = _EMAIL_RE.sub("[REDACTED:EMAIL]", text)
+    for pat in _SECRET_RES:
+        redacted = pat.sub("[REDACTED:SECRET]", redacted)
+
+    def _phone_repl(m):
+        digits = re.sub(r"\D", "", m.group(0))
+        if len(digits) >= 7:
+            return "[REDACTED:PHONE]"
+        return m.group(0)
+
+    redacted = _PHONE_RE.sub(_phone_repl, redacted)
+    return redacted
+
+
+# ---------------------------------------------------------------------------
 # Robust Response Parser (Handles escaped/unescaped quotes and control chars)
 # ---------------------------------------------------------------------------
 
@@ -461,6 +493,7 @@ class LLMService:
         Uses RAG to dynamically retrieve few-shot examples for the system prompt.
         Returns (DualOutputPayload, model_name_used).
         """
+        user_prompt = scrub_pii(user_prompt)
         system = cls._construct_system_prompt(user_prompt)
         
         # If user mentions incompatible legacy frameworks (FreeCAD, OpenSCAD, etc.),
@@ -524,6 +557,7 @@ class LLMService:
         Preserves PARAMS block structure and variable names where possible.
         Returns (DualOutputPayload, model_name_used).
         """
+        modification_prompt = scrub_pii(modification_prompt)
         existing_params_json = json.dumps(
             [p.model_dump() if hasattr(p, 'model_dump') else p for p in existing_parameters],
             indent=2

@@ -43,14 +43,25 @@ function getViewFromHash() {
   const hash = window.location.hash;
   if (hash === '#app') return 'app';
   if (hash === '#gallery') return 'gallery';
+  if (hash.startsWith('#model=') || hash.startsWith('#embed=')) return 'app';
   return 'landing';
+}
+
+function getShareIdFromHash() {
+  const hash = window.location.hash;
+  const match = hash.match(/^#(model|embed)=([^&]+)/);
+  return match ? decodeURIComponent(match[2]) : null;
 }
 
 export default function Router() {
   const [view, setView] = useState(getViewFromHash);
+  const [shareId, setShareId] = useState(getShareIdFromHash);
 
   useEffect(() => {
-    const onHash = () => setView(getViewFromHash());
+    const onHash = () => {
+      setView(getViewFromHash());
+      setShareId(getShareIdFromHash());
+    };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
@@ -75,7 +86,7 @@ export default function Router() {
   return (
     <Suspense fallback={<LoadingFallback />}>
       {view === 'app' ? (
-        <App onGoHome={goToHome} onGoToGallery={goToGallery} />
+        <App onGoHome={goToHome} onGoToGallery={goToGallery} initialGenerationId={shareId} />
       ) : view === 'gallery' ? (
         <Gallery onGoToApp={goToApp} onGoHome={goToHome} />
       ) : (

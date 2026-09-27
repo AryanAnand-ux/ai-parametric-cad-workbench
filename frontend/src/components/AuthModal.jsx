@@ -145,6 +145,7 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister }) {
                 <input
                   type="text"
                   required
+                  autoComplete="name"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="e.g. Alex Engineer"
@@ -172,6 +173,7 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister }) {
               <input
                 type="email"
                 required
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@organization.com"
@@ -198,6 +200,7 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister }) {
               <input
                 type="password"
                 required
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -240,20 +243,6 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister }) {
               {loading ? 'Processing...' : mode === 'login' ? 'Sign In' : 'Create Free Account'}
             </button>
           </form>
-
-          {/* Helper hint */}
-          <div
-            style={{
-              marginTop: '16px',
-              textAlign: 'center',
-              fontSize: '11px',
-              color: '#99908F',
-              borderTop: '1px solid rgba(71, 64, 64, 0.1)',
-              paddingTop: '14px',
-            }}
-          >
-            Demo account: <code style={{ color: '#474040', background: '#EBEBE1', padding: '2px 5px', borderRadius: '4px' }}>investor@cadstudio.ai / Password123!</code>
-          </div>
         </div>
       </div>
     </div>
