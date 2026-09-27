@@ -14,7 +14,7 @@ pytest>=7.4.0
 pytest-asyncio>=0.23.0
 # Week 4 — CAD Engine + RAG
 build123d>=0.8.0
-chromadb>=0.5.0
+chromadb>=1.5.9
 sentence-transformers>=3.0.0
 # Phase 1 — Database + Auth + Streaming
 sqlalchemy[asyncio]>=2.0.0
