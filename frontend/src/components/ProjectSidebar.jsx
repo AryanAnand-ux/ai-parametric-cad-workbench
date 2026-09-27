@@ -87,6 +87,7 @@ export default function ProjectSidebar({
         left: 0,
         bottom: 0,
         width: '360px',
+        maxWidth: '100vw',
         backgroundColor: '#F6F6F0',
         borderRight: '1px solid rgba(71, 64, 64, 0.15)',
         boxShadow: '8px 0 28px rgba(71, 64, 64, 0.12)',

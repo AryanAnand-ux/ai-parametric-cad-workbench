@@ -85,6 +85,7 @@
 - [x] Share-link routes — `#model=`/`#embed=` now deep-link into workbench via `initialGenerationId`
 - [x] SSE cancellation + state fixes — AbortController on generate, paramValuesRef via useEffect, undo deep-clone + persist, single tour key, sidebar refetch fix
 - [x] Deploy config — DB on volumed path, TRUST_PROXY wiring, real benchmark gate, demo creds removed, SEO meta + nginx hardening (gzip/caching/security headers)
+- [x] Round-2 hardening — RAG guards, SSE disconnect, version-record fields, LLM timeouts, tag escaping, DB indexes, atomic likes, pagination, sort/tag validation, bcrypt limit, telemetry caps, subprocess cwd, stderr scrub, security headers, 480px CSS, viewer code-split, health polling, alert→inline, escape-to-close
 
 
 ---

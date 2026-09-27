@@ -21,6 +21,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Login abuse** — 10/min/IP limiter on login/register
 - **Benchmark gate** — threshold step now executes pytest instead of collect-only
 - **SSE/streaming UX** — cancellable generation, undo persistence, tour-key, sidebar loop, gallery error surfacing, demo creds removed
+- **Round-2 robustness** — RAG guards, SSE disconnect abort, version history fields, LLM timeouts, DB indexes, atomic likes, input validation (sort/tags/password), telemetry caps, stderr scrub, 480px mobile CSS, viewer code-split, health polling
 - **CI dependency gap** — `sqlalchemy[asyncio]` + explicit `greenlet` + `bcrypt` (fixed 8 consecutive CI collection failures); removed unused `sse-starlette`
 
 ### Planned

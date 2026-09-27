@@ -11,8 +11,8 @@
  *  - Telemetry HUD: Watertight Manifold, Solid Body Count, Bounding Envelope, Volume
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import Viewer3D, { MATERIAL_PRESETS } from './components/Viewer3D';
+import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react';
+import { MATERIAL_PRESETS } from './constants/materials';
 import ParameterSlider from './components/ParameterSlider';
 import AuthModal from './components/AuthModal';
 import ProjectSidebar from './components/ProjectSidebar';
@@ -38,6 +38,11 @@ import {
   publishDesign,
 } from './api';
 import { VISUAL_STYLES, VIEWPORT_BACKGROUNDS } from './constants/visualStyles';
+
+// Code-split the heavy Three.js viewer so the initial bundle stays lean.
+// Fallback is null: the empty-canvas prompt card below renders independently,
+// so there is no blank-screen regression while the chunk loads.
+const Viewer3D = lazy(() => import('./components/Viewer3D'));
 
 // Build a full URL for file downloads / static assets
 const fileUrl = (path) => {
@@ -200,11 +205,15 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
   const recomputeSequenceRef = useRef(0);
   const generateAbortRef = useRef(null);
 
-  // Health check on mount + debounce timer cleanup + tour persistence
+  // Health check on mount + 30s polling + debounce timer cleanup + tour persistence
   useEffect(() => {
-    healthCheck()
-      .then((data) => setBackendStatus(data.status === 'online' ? 'online' : 'offline'))
-      .catch(() => setBackendStatus('offline'));
+    const runHealthCheck = () => {
+      healthCheck()
+        .then((data) => setBackendStatus(data.status === 'online' ? 'online' : 'offline'))
+        .catch(() => setBackendStatus('offline'));
+    };
+    runHealthCheck();
+    const healthInterval = setInterval(runHealthCheck, 30000);
 
     // Don't auto-show tour if user already completed it
     if (localStorage.getItem('cad_tour_completed') === '1') {
@@ -212,6 +221,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
     }
 
     return () => {
+      clearInterval(healthInterval);
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
       if (generateAbortRef.current) generateAbortRef.current.abort();
@@ -644,7 +654,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
             <button
               className="toolbar-btn header-action-btn header-btn-undo"
               onClick={popSnapshot}
-              title={`Undo to previous state (${modelHistory.length} in stack)`}
+              title={`Undo to previous state (${modelHistory.length} in stack) (Z)`}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 10h10a5 5 0 0 1 5 5v2"/>
@@ -759,9 +769,9 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
           >
             <span
               className="status-dot"
-              style={{ background: backendStatus === 'online' ? '#489235' : '#EF4444' }}
+              style={{ background: backendStatus === 'online' ? '#489235' : backendStatus === 'offline' ? '#EF4444' : '#C9A227' }}
             />
-            <span className="status-label">{backendStatus === 'online' ? 'Ready' : 'Connecting'}</span>
+            <span className="status-label">{backendStatus === 'online' ? 'Ready' : backendStatus === 'offline' ? 'Offline' : 'Checking'}</span>
           </div>
 
           {/* Auth State Button / Profile Dropdown Menu */}
@@ -1013,9 +1023,10 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
           background: `linear-gradient(180deg, ${VIEWPORT_BACKGROUNDS[backgroundTheme]?.topColor || '#242A35'} 0%, ${VIEWPORT_BACKGROUNDS[backgroundTheme]?.bottomColor || '#12151B'} 100%)`,
         }}
       >
-        {/* 3D WebGL Canvas */}
+        {/* 3D WebGL Canvas (code-split via React.lazy) */}
         <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
-          <Viewer3D
+          <Suspense fallback={null}>
+            <Viewer3D
             ref={viewerRef}
             meshUrl={meshUrl}
             visualStyle={visualStyle}
@@ -1025,7 +1036,8 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
             showGrid={showGrid}
             showDimensions={showDimensions}
             onCoordsUpdate={setCursorCoords}
-          />
+            />
+          </Suspense>
           {/* Recomputing overlay — appears during slow boolean recomputation */}
           {recomputing && (
             <div style={{

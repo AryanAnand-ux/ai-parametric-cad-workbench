@@ -66,12 +66,12 @@ class Generation(Base):
     self_corrections: Mapped[int] = mapped_column(Integer, default=0)
     design_mode: Mapped[str] = mapped_column(String(20), default="single_solid")
     components_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_public: Mapped[bool] = mapped_column(default=False)
-    like_count: Mapped[int] = mapped_column(Integer, default=0)
-    fork_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_public: Mapped[bool] = mapped_column(default=False, index=True)
+    like_count: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    fork_count: Mapped[int] = mapped_column(Integer, default=0, index=True)
     tags_json: Mapped[str | None] = mapped_column(Text, nullable=True)       # JSON list of tag strings
     forked_from: Mapped[str | None] = mapped_column(String(36), nullable=True) # parent generation id
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
 
     # Relationships
     project = relationship("Project", back_populates="generations")

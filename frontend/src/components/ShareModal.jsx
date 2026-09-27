@@ -1,8 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function ShareModal({ isOpen, onClose, scriptId, partName, meshUrl, stepUrl }) {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedEmbed, setCopiedEmbed] = useState(false);
+  const [copyError, setCopyError] = useState(null);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
 
   if (!isOpen || !scriptId) return null;
 
@@ -12,20 +22,22 @@ export default function ShareModal({ isOpen, onClose, scriptId, partName, meshUr
   const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
+      setCopyError(null);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
     } catch {
-      alert('Please copy the URL manually.');
+      setCopyError('Clipboard access was denied. Please copy the URL manually.');
     }
   };
 
   const handleCopyEmbed = async () => {
     try {
       await navigator.clipboard.writeText(embedCode);
+      setCopyError(null);
       setCopiedEmbed(true);
       setTimeout(() => setCopiedEmbed(false), 2000);
     } catch {
-      alert('Please copy the embed code manually.');
+      setCopyError('Clipboard access was denied. Please copy the embed code manually.');
     }
   };
 
@@ -62,6 +74,28 @@ export default function ShareModal({ isOpen, onClose, scriptId, partName, meshUr
           <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#6B6363', lineHeight: 1.5 }}>
             Share <strong style={{ color: '#474040' }}>{partName || 'this parametric part'}</strong> with team members or embed interactive 3D solid inspection in your engineering documents.
           </p>
+
+          {/* Inline clipboard error banner (replaces window.alert) */}
+          {copyError && (
+            <div
+              role="alert"
+              style={{
+                padding: '10px 14px',
+                background: '#FEE2E2',
+                border: '1px solid #FCA5A5',
+                borderRadius: '6px',
+                color: '#991B1B',
+                fontSize: '12px',
+                marginBottom: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <span>⚠️</span>
+              <span>{copyError}</span>
+            </div>
+          )}
 
           {/* Share Link */}
           <div style={{ marginBottom: '16px' }}>

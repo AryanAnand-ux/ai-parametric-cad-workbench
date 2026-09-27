@@ -157,6 +157,12 @@ class RAGService:
 
         embeddings = _embed_texts(texts_to_embed)
 
+        if not embeddings:
+            raise RuntimeError(
+                "[RAG] Embedding model unavailable — cannot build index "
+                f"for {len(new_examples)} new examples."
+            )
+
         collection.add(
             ids=[ex["id"] for ex in new_examples],
             embeddings=embeddings,
@@ -187,6 +193,10 @@ class RAGService:
             return []
 
         query_embedding = _embed_query(query)
+
+        if not query_embedding:
+            logger.warning("[RAG] Query embedding is empty (model unavailable). Returning no matches.")
+            return []
 
         results = collection.query(
             query_embeddings=[query_embedding],

@@ -12,12 +12,13 @@ Routes:
 """
 
 import json
+import re
 import uuid
 import logging
 from typing import Optional, List, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
-from sqlalchemy import select, desc, func, or_
+from sqlalchemy import select, desc, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -43,6 +44,25 @@ def _safe_json_loads(raw, fallback):
     except (json.JSONDecodeError, TypeError, ValueError):
         logger.warning(f"[GALLERY] Corrupt JSON column, using fallback: {str(raw)[:80]}")
         return fallback
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE wildcards (%, _, \\) so tag filters match literally."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+_TAG_RE = re.compile(r"[a-z0-9-]{1,30}")
+
+
+def _validate_tags(tags: list) -> list:
+    """Lower/strip each tag and enforce the gallery tag format (422 on invalid)."""
+    cleaned = [str(t).strip().lower() for t in tags if str(t).strip()]
+    for t in cleaned:
+        if not _TAG_RE.fullmatch(t):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid tag {t!r}: tags must match [a-z0-9-]{{1,30}}.",
+            )
+    return cleaned[:10]
 
 
 def _generation_to_gallery_card(g: Generation, author_name: str = "Anonymous") -> dict:
@@ -113,9 +133,16 @@ async def browse_gallery(
 
     # Tag filter
     if tag:
-        query = query.where(Generation.tags_json.like(f'%"{tag}"%'))
+        query = query.where(
+            Generation.tags_json.like(f'%"{_escape_like(tag)}"%', escape="\\")
+        )
 
     # Sorting
+    if sort_by not in ("recent", "popular", "most_forked"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid sort_by {sort_by!r}: must be one of recent | popular | most_forked.",
+        )
     if sort_by == "popular":
         query = query.order_by(desc(Generation.like_count), desc(Generation.created_at))
     elif sort_by == "most_forked":
@@ -188,14 +215,14 @@ async def publish_design(
     # Support tags passed as list ["a", "b"] or dict {"tags": ["a", "b"]}
     tags = None
     if isinstance(payload, list):
-        tags = [str(t).strip().lower() for t in payload if t]
+        tags = _validate_tags(payload)
     elif isinstance(payload, dict):
         raw_tags = payload.get("tags")
         if isinstance(raw_tags, list):
-            tags = [str(t).strip().lower() for t in raw_tags if t]
+            tags = _validate_tags(raw_tags)
 
     if tags is not None:
-        gen.tags_json = json.dumps(tags[:10])
+        gen.tags_json = json.dumps(tags)
     await db.commit()
 
     logger.info(f"[Gallery] Published design {generation_id} by user {current_user.id}")
@@ -239,19 +266,22 @@ async def like_design(
     current_user: User = Depends(get_current_user),
 ):
     """Increment like count on a public design."""
-    result = await db.execute(
-        select(Generation).where(
+    updated = await db.execute(
+        update(Generation)
+        .where(
             Generation.id == generation_id,
             Generation.is_public == True,  # noqa: E712
         )
+        .values(like_count=Generation.like_count + 1)
     )
-    gen = result.scalar_one_or_none()
-    if not gen:
+    if updated.rowcount == 0:
         raise HTTPException(status_code=404, detail="Public design not found")
-
-    gen.like_count = (gen.like_count or 0) + 1
     await db.commit()
-    return {"like_count": gen.like_count}
+
+    count_result = await db.execute(
+        select(Generation.like_count).where(Generation.id == generation_id)
+    )
+    return {"like_count": count_result.scalar() or 0}
 
 
 # ---------------------------------------------------------------------------
@@ -324,8 +354,12 @@ async def fork_design(
     )
     db.add(fork)
 
-    # Increment fork count on original
-    original.fork_count = (original.fork_count or 0) + 1
+    # Increment fork count on original (atomic, no read-modify-write)
+    await db.execute(
+        update(Generation)
+        .where(Generation.id == generation_id)
+        .values(fork_count=Generation.fork_count + 1)
+    )
     await db.commit()
     await db.refresh(fork)
 

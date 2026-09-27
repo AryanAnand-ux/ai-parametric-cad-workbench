@@ -9,6 +9,8 @@ import ast
 import json
 import asyncio
 import logging
+import os
+import secrets
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -123,9 +125,14 @@ async def seed_gallery():
         res = await db.execute(select(User).where(User.email == email))
         author = res.scalar_one_or_none()
         if not author:
+            seed_password = os.getenv("SEED_PASSWORD") or secrets.token_urlsafe(24)
+            if os.getenv("SEED_PASSWORD"):
+                print("[SEED] Using seed author password from SEED_PASSWORD env var.")
+            else:
+                print("[SEED] SEED_PASSWORD not set — generated a random seed author password.")
             author = User(
                 email=email,
-                password_hash=hash_password("atelier_foundry_secret"),
+                password_hash=hash_password(seed_password),
                 display_name="Atelier Foundry",
                 plan_tier="studio",
             )

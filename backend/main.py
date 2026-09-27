@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from config import (
-    MODELS_DIR, PORT, HOST, GEMINI_API_KEY, GEMINI_WEB_ENABLED,
+    BASE_DIR, TEMP_DIR, MODELS_DIR, PORT, HOST, GEMINI_API_KEY, GEMINI_WEB_ENABLED,
     ADMIN_TOKEN, ALLOWED_ORIGINS, RELOAD, ENVIRONMENT, RAG_BUILD_ON_STARTUP,
     JWT_SECRET_KEY,
 )
@@ -49,6 +49,29 @@ from middleware.telemetry import TelemetryMiddleware, metrics as telemetry_metri
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cad_workbench.main")
+
+# Absolute filesystem roots that must never leak into user-facing error payloads
+_SCRUB_ROOTS = tuple(
+    root for root in {
+        str(BASE_DIR),
+        Path(str(BASE_DIR)).as_posix(),
+        str(TEMP_DIR),
+        Path(str(TEMP_DIR)).as_posix(),
+        str(MODELS_DIR),
+        Path(str(MODELS_DIR)).as_posix(),
+    }
+    if root
+)
+
+
+def scrub_fs_paths(text: str) -> str:
+    """Replace absolute app-root paths in stderr snippets with '[app]'."""
+    if not text:
+        return text
+    redacted = str(text)
+    for root in _SCRUB_ROOTS:
+        redacted = redacted.replace(root, "[app]")
+    return redacted
 
 _modify_id_lock = asyncio.Lock()
 _reserved_modify_ids: set[str] = set()
@@ -88,7 +111,7 @@ class SimpleRateLimiter:
                     },
                 )
             timestamps.append(now)
-            self.history[client_ip] = timestamps
+            self.history[client_ip] = timestamps[-self.rpm:]
             remaining = self.rpm - len(timestamps)
             reset_in = max(1, int(timestamps[0] + 60 - now)) if timestamps else 60
             return remaining, reset_in
@@ -183,6 +206,15 @@ app.add_middleware(
 
 # Structured JSON request telemetry (must come after CORS)
 app.add_middleware(TelemetryMiddleware)
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    """Minimal hardening headers (embeds stay allowed — no frame options)."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    return response
 
 # Mount authentication, workspace, and gallery routers
 app.include_router(auth_router)
@@ -292,6 +324,7 @@ async def generate_part(
             LLMService.generate_dual_output, payload.prompt
         )
     except Exception as e:
+        telemetry_metrics.record_generation(False, model_used)
         raise HTTPException(
             status_code=502,
             detail=f"LLM generation failed (all 3 tiers exhausted): {str(e)}"
@@ -348,7 +381,8 @@ async def generate_part(
     # If execution still failed after retries or early break, raise HTTPException
     is_geo_valid = execution_result.get("mesh_info", {}).get("is_valid", True) if execution_result else False
     if not execution_result or execution_result.get("status") != "success" or not is_geo_valid:
-        stderr_tail = (execution_result.get("stderr", "") if execution_result else "")[-2000:]
+        stderr_tail = scrub_fs_paths((execution_result.get("stderr", "") if execution_result else "")[-2000:])
+        telemetry_metrics.record_generation(False, model_used)
         raise HTTPException(
             status_code=422,
             detail={
@@ -390,6 +424,7 @@ async def generate_part(
 
     background_tasks.add_task(ArtifactCleanupManager.cleanup_old_artifacts, 86400)
 
+    telemetry_metrics.record_generation(True, model_used)
     return GenerateResponse(
         status="success",
         generation_id=gen_id,
@@ -436,31 +471,48 @@ async def generate_part_stream(
         self_correction_attempts = 0
         model_used = "unknown"
 
+        async def _aborted() -> bool:
+            try:
+                return bool(await request.is_disconnected())
+            except Exception:
+                return False
+
         # Phase 1: RAG context retrieval
+        if await _aborted():
+            return
         yield f"data: {json.dumps({'phase': 'rag_retrieval', 'message': 'Searching 101 CAD blueprints in vector database...', 'progress': 15})}\n\n"
         await asyncio.sleep(0.05)
 
         # Phase 2: LLM Generation
+        if await _aborted():
+            return
         yield f"data: {json.dumps({'phase': 'llm_generation', 'message': 'Synthesizing build123d parametric script...', 'progress': 35})}\n\n"
         try:
             dual_output, model_used = await asyncio.to_thread(
                 LLMService.generate_dual_output, payload.prompt
             )
         except Exception as e:
+            telemetry_metrics.record_generation(False, model_used)
             yield f"data: {json.dumps({'phase': 'error', 'message': f'LLM generation failed: {str(e)}', 'error': str(e)})}\n\n"
             return
 
         # Phase 3: AST & Security Sandbox
+        if await _aborted():
+            return
         yield f"data: {json.dumps({'phase': 'ast_validation', 'message': 'AST security sandbox validation passed...', 'progress': 55})}\n\n"
         await asyncio.sleep(0.05)
 
         # Phase 4: CAD Kernel Execution & Self-Correction
+        if await _aborted():
+            return
         yield f"data: {json.dumps({'phase': 'cad_execution', 'message': 'OpenCASCADE geometry kernel compiling solid model...', 'progress': 75})}\n\n"
 
         current_code = dual_output.python_code
         execution_result = None
 
         for attempt in range(LLMService.MAX_RETRIES + 1):
+            if await _aborted():
+                return
             execution_result = await CADRunner.execute_script_async(
                 script_id=script_id,
                 python_code=current_code,
@@ -473,6 +525,8 @@ async def generate_part_stream(
 
             if attempt < LLMService.MAX_RETRIES:
                 self_correction_attempts += 1
+                if await _aborted():
+                    return
                 yield f"data: {json.dumps({'phase': 'self_correction', 'message': f'Self-correcting geometry topology (attempt {self_correction_attempts}/{LLMService.MAX_RETRIES})...', 'progress': 82})}\n\n"
                 if execution_result["status"] != "success":
                     traceback_text = execution_result.get("stderr", "Unknown execution error")
@@ -494,11 +548,14 @@ async def generate_part_stream(
 
         is_geo_valid = execution_result.get("mesh_info", {}).get("is_valid", True) if execution_result else False
         if not execution_result or execution_result.get("status") != "success" or not is_geo_valid:
-            stderr_tail = (execution_result.get("stderr", "") if execution_result else "")[-2000:]
+            stderr_tail = scrub_fs_paths((execution_result.get("stderr", "") if execution_result else "")[-2000:])
+            telemetry_metrics.record_generation(False, model_used)
             yield f"data: {json.dumps({'phase': 'error', 'message': 'CAD execution failed', 'error_code': 'cad_execution_failed', 'stderr_tail': stderr_tail})}\n\n"
             return
 
         # Phase 5: Mesh validation
+        if await _aborted():
+            return
         yield f"data: {json.dumps({'phase': 'mesh_validation', 'message': 'Solid verified (watertight 2-manifold mesh)...', 'progress': 92})}\n\n"
         await asyncio.sleep(0.05)
 
@@ -531,6 +588,7 @@ async def generate_part_stream(
 
         background_tasks.add_task(ArtifactCleanupManager.cleanup_old_artifacts, 86400)
 
+        telemetry_metrics.record_generation(True, model_used)
         final_response = {
             "status": "success",
             "generation_id": gen_id,
@@ -610,12 +668,13 @@ async def recompute_part(
             if explicit_invalid
             else "Recomputation failed - CAD script did not produce geometry"
         )
+        telemetry_metrics.record_generation(False, "recompute")
         raise HTTPException(
             status_code=400,
             detail={
                 "error": error_message,
                 "error_code": result.get("error_type", "cad_execution_failed"),
-                "stderr_snippet": result.get("stderr", "")[:300],
+                "stderr_snippet": scrub_fs_paths(result.get("stderr", "")[:300]),
                 "geometry_warnings": mesh_info.get("geometry_warnings", []),
             }
         )
@@ -625,6 +684,7 @@ async def recompute_part(
         f"[RECOMPUTE] Success | script_id={payload.script_id} | "
         f"time={elapsed_ms}ms | dims={dims}"
     )
+    telemetry_metrics.record_generation(True, "recompute")
 
     return RecomputeResponse(
         status="success",
@@ -828,6 +888,7 @@ async def modify_part(
             components=payload.components,
         )
     except Exception as e:
+        telemetry_metrics.record_generation(False, model_used)
         raise HTTPException(
             status_code=502,
             detail=f"LLM modification failed: {str(e)}"
@@ -881,7 +942,8 @@ async def modify_part(
 
     is_geo_valid = execution_result.get("mesh_info", {}).get("is_valid", True) if execution_result else False
     if not execution_result or execution_result.get("status") != "success" or not is_geo_valid:
-        stderr_tail = (execution_result.get("stderr", "") if execution_result else "")[-2000:]
+        stderr_tail = scrub_fs_paths((execution_result.get("stderr", "") if execution_result else "")[-2000:])
+        telemetry_metrics.record_generation(False, model_used)
         raise HTTPException(
             status_code=422,
             detail={
@@ -908,12 +970,14 @@ async def modify_part(
                 mesh_url=execution_result.get("mesh_url"),
                 step_url=execution_result.get("step_url"),
                 mesh_info=execution_result.get("mesh_info"),
+                model_used=model_used,
             )
         except Exception as dbe:
             logger.warning(f"[DB] Failed to persist version: {dbe}")
 
     background_tasks.add_task(ArtifactCleanupManager.cleanup_old_artifacts, 86400)
 
+    telemetry_metrics.record_generation(True, model_used)
     return ModifyResponse(
         status="success",
         script_id=new_script_id,

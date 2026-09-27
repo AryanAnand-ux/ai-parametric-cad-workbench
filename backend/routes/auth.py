@@ -13,6 +13,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from jose import ExpiredSignatureError
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -98,6 +99,12 @@ class UserProfileResponse(BaseModel):
 async def register(payload: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Create a new user account and return JWT tokens."""
     _check_auth_rate_limit(request.client.host if request.client else "unknown")
+    # bcrypt truncates silently past 72 bytes — reject explicitly instead.
+    if len(payload.password.encode("utf-8")) > 72:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password too long: maximum 72 bytes (UTF-8).",
+        )
     # Check if email already exists
     result = await db.execute(select(User).where(User.email == payload.email.lower()))
     if result.scalar_one_or_none():
@@ -178,8 +185,12 @@ async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_
             raise HTTPException(status_code=401, detail="Invalid token type.")
         user_id = token_data.get("sub")
         token_ver = token_data.get("ver", 0)
+    except HTTPException:
+        raise
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Refresh token expired. Please log in again.")
     except Exception:
-        raise HTTPException(status_code=401, detail="Invalid or expired refresh token.")
+        raise HTTPException(status_code=401, detail="Invalid refresh token.")
 
     result = await db.execute(select(User).where(User.id == user_id, User.is_active == True))
     user = result.scalar_one_or_none()
@@ -189,7 +200,7 @@ async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_
     current_ver = getattr(user, "refresh_token_version", 0) or 0
     if int(token_ver or 0) != int(current_ver):
         logger.warning(f"[AUTH] Refresh token reuse detected for user_id={user_id}")
-        raise HTTPException(status_code=401, detail="Invalid or expired refresh token.")
+        raise HTTPException(status_code=401, detail="Invalid refresh token.")
 
     user.refresh_token_version = int(current_ver) + 1
     await db.commit()

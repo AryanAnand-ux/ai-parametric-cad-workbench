@@ -38,6 +38,7 @@ export default function PromptPanel({
           className="generate-btn"
           onClick={() => handleGenerate()}
           disabled={loading || !prompt.trim()}
+          title="Generate parametric solid (G)"
         >
           {loading ? (
             <>

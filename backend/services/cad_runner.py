@@ -506,6 +506,9 @@ class CADRunner:
                 errors="replace",
                 timeout=timeout_seconds,
                 env=isolated_env,
+                # Wrapper writes STL/STEP via absolute OUTPUT_* paths, so a
+                # fixed cwd is safe and keeps stray relative writes contained.
+                cwd=str(TEMP_DIR),
             )
             return result.returncode, result.stdout, result.stderr
 

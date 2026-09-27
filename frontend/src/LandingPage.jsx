@@ -101,6 +101,15 @@ export default function LandingPage({ onEnterApp, onGoToGallery }) {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  useEffect(() => {
+    if (!videoModalOpen) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setVideoModalOpen(false);
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [videoModalOpen]);
+
   const calculatedVolume = (
     ((demoSliders.width * demoSliders.width * 8 +
       demoSliders.finCount * demoSliders.width * demoSliders.finHeight * demoSliders.wallThick) /
@@ -555,7 +564,7 @@ export default function LandingPage({ onEnterApp, onGoToGallery }) {
             },
             {
               num: '02',
-              title: 'Sub-140ms Parametric Sliders',
+              title: 'Sub-200ms Parametric Sliders',
               desc: 'Automatically extracts critical variables into dynamic UI sliders. Adjusting parameters recomputes Python build123d geometry in real time without extra LLM token calls.',
               tag: 'Zero-Token Recompute',
             },
@@ -776,6 +785,10 @@ export default function LandingPage({ onEnterApp, onGoToGallery }) {
                   <img
                     src={discipline.img}
                     alt={discipline.title}
+                    loading="lazy"
+                    decoding="async"
+                    width="600"
+                    height="800"
                     style={{
                       width: '100%',
                       height: '100%',
@@ -1381,7 +1394,7 @@ export default function LandingPage({ onEnterApp, onGoToGallery }) {
               a: 'Mesh generators create polygonal approximations (triangles) that suffer from non-manifold geometry, faceting, and lack exact dimensions. Our engine uses OpenCASCADE and build123d to produce analytical boundary representation (B-Rep) geometry with mathematically exact planar, cylindrical, and toroidal surfaces, fully exportable to standard CAD packages via STEP AP214.',
             },
             {
-              q: 'How does the sub-140ms live slider recomputation work without LLM tokens?',
+              q: 'How does the sub-200ms live slider recomputation work without LLM tokens?',
               a: 'When an initial model is synthesized, the LLM outputs a dual-output schema containing both the parameterized build123d script and a metadata array of exposed CAD parameters. When you move a slider, our backend directly re-executes the Python script with your new numeric values in a local sub-process, bypassing the AI entirely for instantaneous mechanical feedback.',
             },
             {
@@ -1394,7 +1407,7 @@ export default function LandingPage({ onEnterApp, onGoToGallery }) {
             },
             {
               q: 'What is the complete system technology stack?',
-              a: 'The frontend is built with React 18, Vite, Three.js / React Three Fiber for WebGL rendering. The backend is built with Python FastAPI, OpenCASCADE Technology 7.8, build123d parametric modeling framework, and Gemini generative reasoning.',
+              a: 'The frontend is built with React 19, Vite, Three.js / React Three Fiber for WebGL rendering. The backend is built with Python FastAPI, OpenCASCADE Technology 7.8, build123d parametric modeling framework, and Gemini generative reasoning.',
             },
           ].map((item, idx) => (
             <FaqItem key={idx} index={idx} question={item.q} answer={item.a} />

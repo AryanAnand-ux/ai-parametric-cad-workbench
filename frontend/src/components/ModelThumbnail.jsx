@@ -227,13 +227,13 @@ export default function ModelThumbnail({ item }) {
       />
 
       {/* Crosshair marks in corners */}
-      <div style={{ position: 'absolute', top: '8px', left: '8px', opacity: 0.35, fontSize: '10px', color: '#474040', fontFamily: 'monospace' }}>
+      <div aria-hidden="true" style={{ position: 'absolute', top: '8px', left: '8px', opacity: 0.35, fontSize: '10px', color: '#474040', fontFamily: 'monospace' }}>
         +
       </div>
-      <div style={{ position: 'absolute', top: '8px', right: '8px', opacity: 0.35, fontSize: '10px', color: '#474040', fontFamily: 'monospace' }}>
+      <div aria-hidden="true" style={{ position: 'absolute', top: '8px', right: '8px', opacity: 0.35, fontSize: '10px', color: '#474040', fontFamily: 'monospace' }}>
         +
       </div>
-      <div style={{ position: 'absolute', bottom: '8px', left: '8px', opacity: 0.35, fontSize: '10px', color: '#474040', fontFamily: 'monospace' }}>
+      <div aria-hidden="true" style={{ position: 'absolute', bottom: '8px', left: '8px', opacity: 0.35, fontSize: '10px', color: '#474040', fontFamily: 'monospace' }}>
         +
       </div>
 

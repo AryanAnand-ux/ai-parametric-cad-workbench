@@ -7,7 +7,7 @@ const TOUR_STEPS = [
     badge: 'Step 1 of 5',
     icon: '⚡',
     description:
-      'Describe any mechanical part using engineering terminology or plain language. Our 4-tier fallback synthesizes build123d Python scripts grounded by a vector index of 101 CAD templates.',
+      'Describe any mechanical part using engineering terminology or plain language. Our 4-tier fallback synthesizes build123d Python scripts grounded by a vector index of 121 CAD templates.',
     tip: 'Try one of the presets like "CPU Heatsink" or "Mounting Bracket" on the left panel to explore immediately.',
   },
   {

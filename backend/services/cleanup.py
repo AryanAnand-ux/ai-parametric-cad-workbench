@@ -25,19 +25,28 @@ class ArtifactCleanupManager:
         for directory in target_dirs:
             if not directory.exists():
                 continue
-                
-            for file_path in directory.glob("*"):
-                if file_path.is_file():
-                    # Calculate file age
+
+            for file_path in directory.rglob("*"):
+                if not file_path.is_file():
+                    continue
+                # Guard stat: file may vanish between rglob and stat (races with writers)
+                try:
                     file_age = now - file_path.stat().st_mtime
-                    if file_age > max_age_seconds:
-                        try:
-                            file_path.unlink()
-                            removed_count += 1
-                            logger.info(f"Cleaned up stale artifact: {file_path.name}")
-                        except Exception as e:
-                            logger.warning(f"Failed to delete {file_path.name}: {e}")
-                            
+                except FileNotFoundError:
+                    continue
+                except OSError as e:
+                    logger.warning(f"Failed to stat {file_path.name}: {e}")
+                    continue
+                if file_age > max_age_seconds:
+                    try:
+                        file_path.unlink()
+                        removed_count += 1
+                        logger.info(f"Cleaned up stale artifact: {file_path.name}")
+                    except FileNotFoundError:
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Failed to delete {file_path.name}: {e}")
+
         return removed_count
 
     @staticmethod
@@ -46,5 +55,7 @@ class ArtifactCleanupManager:
         if file_path and file_path.exists():
             try:
                 file_path.unlink()
+            except FileNotFoundError:
+                pass
             except Exception as e:
                 logger.warning(f"Failed to remove temp file {file_path}: {e}")

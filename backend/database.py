@@ -87,6 +87,23 @@ async def create_tables():
                         for col_name, col_def in user_migrations:
                             if col_name not in existing_users:
                                 cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+                    # Backfill indexes for pre-existing databases
+                    cursor.execute(
+                        "CREATE INDEX IF NOT EXISTS ix_generations_is_public "
+                        "ON generations (is_public)"
+                    )
+                    cursor.execute(
+                        "CREATE INDEX IF NOT EXISTS ix_generations_like_count "
+                        "ON generations (like_count)"
+                    )
+                    cursor.execute(
+                        "CREATE INDEX IF NOT EXISTS ix_generations_fork_count "
+                        "ON generations (fork_count)"
+                    )
+                    cursor.execute(
+                        "CREATE INDEX IF NOT EXISTS ix_generations_created_at "
+                        "ON generations (created_at)"
+                    )
                 except Exception as e:
                     # Never swallow migration failures silently — a half-migrated
                     # schema causes confusing errors later. Production uses Alembic.

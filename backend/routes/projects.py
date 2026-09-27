@@ -213,6 +213,8 @@ async def get_generation(
     generation_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    page: int = Query(1, ge=1, description="Version history page (1-indexed)"),
+    per_page: int = Query(200, ge=1, le=500, description="Versions per page"),
 ):
     """Get full details of a generation including version history."""
     result = await db.execute(
@@ -232,8 +234,16 @@ async def get_generation(
         except Exception:
             return None
 
+    all_versions = list(gen.versions)
+    total_versions = len(all_versions)
+    start = (page - 1) * per_page
+    paged_versions = all_versions[start:start + per_page]
+
     return {
         "status": "success",
+        "page": page,
+        "per_page": per_page,
+        "version_total": total_versions,
         "generation": GenerationDetail(
             id=gen.id,
             script_id=gen.script_id,
@@ -261,7 +271,7 @@ async def get_generation(
                     "step_url": v.step_url,
                     "created_at": v.created_at.isoformat() if v.created_at else "",
                 }
-                for v in gen.versions
+                for v in paged_versions
             ],
             created_at=gen.created_at.isoformat() if gen.created_at else "",
         ).model_dump(),
@@ -285,7 +295,7 @@ async def save_generation_record(
     model_used: str | None,
     generation_time_ms: int | None,
     self_corrections: int,
-    design_mode: str = "single",
+    design_mode: str = "single_solid",
     components: list | None = None,
     project_id: str | None = None,
 ) -> Optional[Generation]:
@@ -342,6 +352,7 @@ async def save_version_record(
     mesh_url: str | None = None,
     step_url: str | None = None,
     mesh_info: dict | None = None,
+    model_used: str | None = None,
 ) -> Optional[Version]:
     """Persist a modified version linked to base generation."""
     try:
@@ -370,8 +381,10 @@ async def save_version_record(
             script_id=new_script_id,
             python_code=python_code,
             parameters_json=json.dumps(parameters) if parameters else None,
+            mesh_info_json=json.dumps(mesh_info) if mesh_info else None,
             mesh_url=mesh_url,
             step_url=step_url,
+            model_used=model_used,
         )
         db.add(version)
         await db.commit()

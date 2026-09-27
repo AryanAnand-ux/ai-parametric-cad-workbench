@@ -168,7 +168,7 @@ export default function ViewportToolbar({
           type="button"
           className={`vt-dropdown-trigger vt-export-trigger ${openDropdown === 'export' ? 'open' : ''}`}
           onClick={() => toggleDropdown('export')}
-          title={meshUrl || stepUrl ? "Download 3D CAD Files" : "Generate a model first to export"}
+          title={meshUrl || stepUrl ? "Download 3D CAD Files (E)" : "Generate a model first to export"}
           style={{ opacity: (meshUrl || stepUrl || pythonCode) ? 1 : 0.65 }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

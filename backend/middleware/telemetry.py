@@ -30,6 +30,10 @@ logger = logging.getLogger("cad_workbench.telemetry")
 class _MetricsStore:
     """Thread-safe-ish in-process metrics (good enough for single-process uvicorn)."""
 
+    # Upper bound on distinct counter keys so unbounded path/model/status
+    # cardinality can never grow memory without limit.
+    MAX_KEYS = 1000
+
     def __init__(self):
         self.request_count: int = 0
         self.error_count: int = 0
@@ -45,8 +49,14 @@ class _MetricsStore:
 
     def record(self, path: str, status: int, latency_ms: float):
         self.request_count += 1
-        self.latencies[path].append(latency_ms)
-        self.status_counts[status] += 1
+        if path in self.latencies:
+            self.latencies[path].append(latency_ms)
+        elif len(self.latencies) < self.MAX_KEYS:
+            self.latencies[path].append(latency_ms)
+        if status in self.status_counts:
+            self.status_counts[status] += 1
+        elif len(self.status_counts) < self.MAX_KEYS:
+            self.status_counts[status] += 1
         if status >= 400:
             self.error_count += 1
 
@@ -55,7 +65,10 @@ class _MetricsStore:
             self.cad_success += 1
         else:
             self.cad_failure += 1
-        self.model_counts[model] += 1
+        if model in self.model_counts:
+            self.model_counts[model] += 1
+        elif len(self.model_counts) < self.MAX_KEYS:
+            self.model_counts[model] += 1
 
     def summary(self) -> dict:
         total = self.request_count or 1

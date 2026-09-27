@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 /**
  * CodeInspectorModal — Dialog for viewing and copying the generated Python CAD build123d script.
@@ -11,13 +11,16 @@ export default function CodeInspectorModal({
   scriptId,
   onError,
 }) {
+  const [copied, setCopied] = useState(false);
+
   if (!isOpen || !pythonCode) return null;
 
   const handleCopy = async () => {
     try {
       if (!navigator.clipboard) throw new Error('Clipboard unavailable');
       await navigator.clipboard.writeText(pythonCode);
-      alert('Python CAD code copied to clipboard!');
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch {
       onError?.('Clipboard access was denied. Select and copy the code manually.');
     }
@@ -58,7 +61,9 @@ export default function CodeInspectorModal({
         <pre className="modal-code"><code>{pythonCode}</code></pre>
 
         <div className="modal-footer">
-          <span className="modal-hint">All parameters are exposed in the PARAMS dict at the top of the script.</span>
+          <span className="modal-hint" role="status">
+            {copied ? 'Python CAD code copied to clipboard!' : 'All parameters are exposed in the PARAMS dict at the top of the script.'}
+          </span>
           <div className="modal-actions">
             <button
               className="toolbar-btn export-btn"
@@ -69,7 +74,7 @@ export default function CodeInspectorModal({
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
               </svg>
-              <span>Copy Code</span>
+              <span>{copied ? 'Copied ✓' : 'Copy Code'}</span>
             </button>
             <button className="toolbar-btn" onClick={onClose}>
               Close

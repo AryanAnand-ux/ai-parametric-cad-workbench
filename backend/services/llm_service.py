@@ -184,7 +184,14 @@ def _robust_parse_json(text: str) -> dict:
         m_code = re.search(pat, text, re.DOTALL)
         if m_code:
             candidate = m_code.group(1).rstrip('",}')
-            candidate = candidate.replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\')
+            # Unescape ordering: shield literal backslashes first so `\\n`
+            # (escaped backslash + 'n') is not corrupted into a newline.
+            candidate = (
+                candidate.replace('\\\\', '\x00')
+                .replace('\\n', '\n')
+                .replace('\\"', '"')
+                .replace('\x00', '\\')
+            )
             try:
                 ast.parse(candidate)
                 code_str = candidate
@@ -265,11 +272,13 @@ def _call_gemini(prompt: str, system: str, model: str = "gemini-2.5-flash") -> s
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY not configured.")
 
-    client = genai.Client(api_key=api_key)
-    
+    client = genai.Client(api_key=api_key, http_options={"timeout": 60_000})
+
     last_err = None
     for attempt in range(2):
         try:
+            # NB: generate_content takes no per-call timeout kwarg in
+            # google-genai; the 60s timeout is set on the client above.
             response = client.models.generate_content(
                 model=model,
                 contents=prompt,
@@ -315,6 +324,7 @@ def _call_groq(prompt: str, system: str) -> str:
         response_format={"type": "json_object"},
         temperature=0.2,
         max_tokens=8192,
+        timeout=60,
     )
     return response.choices[0].message.content
 

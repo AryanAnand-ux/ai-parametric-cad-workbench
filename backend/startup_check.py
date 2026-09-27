@@ -4,6 +4,7 @@ Run this once to verify all dependencies are correctly installed.
 """
 import sys
 import importlib
+import importlib.util
 
 REQUIRED = [
     ("fastapi",              "FastAPI web framework"),
@@ -25,9 +26,13 @@ print("=" * 60)
 ok = True
 for module, label in REQUIRED:
     try:
-        importlib.import_module(module)
+        # find_spec is a lightweight presence check (no module execution);
+        # fall back to a real import for namespace/editable installs it may miss.
+        found = importlib.util.find_spec(module) is not None
+        if not found:
+            importlib.import_module(module)
         print(f"  [OK]   {label:<36} ({module})")
-    except ImportError as e:
+    except (ImportError, ModuleNotFoundError, ValueError) as e:
         print(f"  [FAIL] {label:<36} ({module}) — {e}")
         ok = False
 

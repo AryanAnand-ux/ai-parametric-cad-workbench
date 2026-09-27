@@ -60,7 +60,7 @@ GEMINI_WEB_XSRF_TOKEN = os.getenv("GEMINI_WEB_XSRF_TOKEN", "").strip()
 GEMINI_WEB_PROXY = os.getenv("GEMINI_WEB_PROXY", "").strip()
 GEMINI_WEB_RETRY_ATTEMPTS = _int_env("GEMINI_WEB_RETRY_ATTEMPTS", 3)
 GEMINI_WEB_RETRY_DELAY_SEC = float(os.getenv("GEMINI_WEB_RETRY_DELAY_SEC", "2"))
-GEMINI_WEB_TIMEOUT_SEC = float(os.getenv("GEMINI_WEB_TIMEOUT_SEC", "180"))
+GEMINI_WEB_TIMEOUT_SEC = float(os.getenv("GEMINI_WEB_TIMEOUT_SEC", "60"))
 
 # Standalone Gemini-Web2API Proxy Service Settings
 GEMINI_WEB2API_HOST = os.getenv("GEMINI_WEB2API_HOST", "127.0.0.1")  # Strictly loopback for security

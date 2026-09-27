@@ -286,6 +286,9 @@ Two specialist passes (backend security + frontend hardening), verified 69/69 te
 - **Frontend**: `#model=`/`#embed=` deep links load the model; SSE AbortController (resubmit/unmount, no error on cancel); ref/effect, undo persist, tour-key, sidebar-loop, slider-step, gallery-errors, AuthModal creds removed, aria attrs, storage version guard, SEO meta, nginx gzip/caching/security headers, `preserveDrawingBuffer` dropped.
 - Test counts: 60 → 69 (13 files). CI subset: 8 files / 48 tests.
 
+### Round 2 (same day)
+Backend: RAG empty-embedding guards, SSE `is_disconnected` abort, `save_version_record` now stores `mesh_info_json`/`model_used`, `single_solid` default fixed, Groq/Gemini 60s timeouts, LIKE escaping, indexes on gallery columns (+backfill migration), atomic like/fork, generation pagination (default 200), sort/tag 422 validation, bcrypt >72B rejected, telemetry key caps, `rglob` cleanup, limiter caps, subprocess `cwd=TEMP_DIR`, stderr path scrub, random seed password, JWT `iat`, nosniff/referrer headers, robust startup check. Static `.py` was already gated (verified live). Frontend: 480px breakpoint + bigger targets, `cssMinify`, lazy images, lazy Viewer3D chunk, copy fixes (React 19, 121 templates, Sub-200ms), 30s health poll with checking state, alert→inline errors, escape-to-close modals, decorative aria-hidden, shortcut title hints. Suite still 69/69, build split verified, lint 0 errors.
+
 ### Changes Made (docs & cleanup)
 
 #### 1. Version History (`CHANGELOG.md`)
