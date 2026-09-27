@@ -23,6 +23,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **SSE/streaming UX** — cancellable generation, undo persistence, tour-key, sidebar loop, gallery error surfacing, demo creds removed
 - **Round-2 robustness** — RAG guards, SSE disconnect abort, version history fields, LLM timeouts, DB indexes, atomic likes, input validation (sort/tags/password), telemetry caps, stderr scrub, 480px mobile CSS, viewer code-split, health polling
 - **Round-3 features** — daily quotas (50/day free tier), per-user rate keys, batch ZIP export-all, focus-trap system, gallery load-more, dev-only logger, slider draft typing, Dependabot
+- **Round-4 stack** — PyJWT (jose removed), Postgres-ready compose, tour docs link, telemetry face chip
 - **CI dependency gap** — `sqlalchemy[asyncio]` + explicit `greenlet` + `bcrypt` (fixed 8 consecutive CI collection failures); removed unused `sse-starlette`
 
 ### Planned
