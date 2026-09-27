@@ -332,3 +332,19 @@ export async function getMetrics() {
   return data;
 }
 
+// ---------------------------------------------------------------------------
+// Download helpers — trigger a browser download via anchor click, mirroring
+// the <a href download> export links used throughout the workbench.
+// ---------------------------------------------------------------------------
+
+export function downloadAllFormats(scriptId) {
+  const baseUrl = BASE_URL.replace(/\/+$/, '');
+  const url = `${baseUrl}/api/download/${scriptId}/all`;
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${scriptId}.zip`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+

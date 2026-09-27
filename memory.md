@@ -289,6 +289,9 @@ Two specialist passes (backend security + frontend hardening), verified 69/69 te
 ### Round 2 (same day)
 Backend: RAG empty-embedding guards, SSE `is_disconnected` abort, `save_version_record` now stores `mesh_info_json`/`model_used`, `single_solid` default fixed, Groq/Gemini 60s timeouts, LIKE escaping, indexes on gallery columns (+backfill migration), atomic like/fork, generation pagination (default 200), sort/tag 422 validation, bcrypt >72B rejected, telemetry key caps, `rglob` cleanup, limiter caps, subprocess `cwd=TEMP_DIR`, stderr path scrub, random seed password, JWT `iat`, nosniff/referrer headers, robust startup check. Static `.py` was already gated (verified live). Frontend: 480px breakpoint + bigger targets, `cssMinify`, lazy images, lazy Viewer3D chunk, copy fixes (React 19, 121 templates, Sub-200ms), 30s health poll with checking state, alert→inline errors, escape-to-close modals, decorative aria-hidden, shortcut title hints. Suite still 69/69, build split verified, lint 0 errors.
 
+### Round 3 (same day)
+Backend: daily quota 50/day free (`check_and_bump_quota`, `test_quota.py` 10 tests), per-user rate keys, `GET /api/download/{id}/all` ZIP export with ownership gate. Frontend: `useFocusTrap` on 4 overlays, gallery load-more append, export-all archive button, dev-only `utils/logger`, slider draft typing, tour `?` hint. Plus `.github/dependabot.yml` (pip/npm/actions weekly). Suite 79/79 (14 files).
+
 ### Changes Made (docs & cleanup)
 
 #### 1. Version History (`CHANGELOG.md`)

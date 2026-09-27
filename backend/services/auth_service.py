@@ -32,6 +32,66 @@ JWT_REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "
 
 import bcrypt
 
+# ─── Daily Generation Quota (free tier) ─────────────────────────────────────
+
+DAILY_GENERATION_QUOTA = 50
+
+
+async def check_and_bump_quota(user, db=None, cost: int = 1):
+    """Enforce free-tier daily quota of 50 generations+modifies per user per UTC day.
+
+    Resets ``generations_today`` to 0 when ``last_generation_date`` != today
+    (UTC), raises HTTPException 429 when over limit, else increments + commits.
+    Re-fetches the user in the caller's ``db`` session so updates persist even
+    when ``user`` was loaded in a different request-scoped session.
+    """
+    from datetime import timezone as _tz
+
+    today = datetime.now(_tz.utc).date().isoformat()
+    target = user
+    if db is not None:
+        try:
+            from models.user import User as _User
+
+            result = await db.execute(select(_User).where(_User.id == user.id))
+            db_user = result.scalar_one_or_none()
+            if db_user is not None:
+                target = db_user
+        except Exception:
+            target = user
+    last = getattr(target, "last_generation_date", None)
+    count = getattr(target, "generations_today", 0) or 0
+    if last != today:
+        count = 0
+    if count >= DAILY_GENERATION_QUOTA:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "Daily generation quota exceeded (50/day on free tier)",
+                "error_code": "quota_exceeded",
+                "reset": "midnight UTC",
+            },
+        )
+    target.generations_today = count + int(cost or 0)
+    target.last_generation_date = today
+    if target is not user:
+        try:
+            user.generations_today = target.generations_today
+            user.last_generation_date = target.last_generation_date
+        except Exception:
+            pass
+    if db is not None:
+        try:
+            await db.commit()
+        except Exception:
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            raise
+    return target
+
+
 # ─── Password Hashing ──────────────────────────────────────────────────────
 
 def hash_password(password: str) -> str:

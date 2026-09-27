@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { listProjects, getProject, createProject, deleteProject } from '../api';
+import { logger } from '../utils/logger';
 
 export default function ProjectSidebar({
   isOpen,
@@ -23,7 +24,7 @@ export default function ProjectSidebar({
         setSelectedProjectId((prev) => prev ?? projs[0].id);
       }
     } catch (err) {
-      console.error('Failed to load projects:', err);
+      logger.error('Failed to load projects:', err);
     } finally {
       setLoading(false);
     }
@@ -42,7 +43,7 @@ export default function ProjectSidebar({
         const data = await getProject(selectedProjectId);
         setGenerations(data.generations || []);
       } catch (err) {
-        console.error('Failed to fetch project designs:', err);
+        logger.error('Failed to fetch project designs:', err);
       }
     }
     loadGenerations();
@@ -58,7 +59,7 @@ export default function ProjectSidebar({
       await loadProjects();
       setSelectedProjectId(proj.id);
     } catch (err) {
-      console.error('Error creating project:', err);
+      logger.error('Error creating project:', err);
     }
   };
 
@@ -73,7 +74,7 @@ export default function ProjectSidebar({
       }
       await loadProjects();
     } catch (err) {
-      console.error('Error deleting project:', err);
+      logger.error('Error deleting project:', err);
     }
   };
 

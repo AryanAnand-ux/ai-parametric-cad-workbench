@@ -2,11 +2,13 @@
 FastAPI Application Entry Point — AI-Driven Parametric CAD Workbench API
 """
 import asyncio
+import io
 import os
 import re
 import uuid
 import time
 import logging
+import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 from collections import defaultdict
@@ -41,7 +43,7 @@ from services import gemini_web_client
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import create_tables, get_db
 from models.user import User
-from services.auth_service import get_optional_user
+from services.auth_service import check_and_bump_quota, get_optional_user
 from routes.auth import router as auth_router
 from routes.projects import router as projects_router, save_generation_record, save_version_record
 from routes.gallery import gallery_router
@@ -120,6 +122,39 @@ class SimpleRateLimiter:
 generate_limiter = SimpleRateLimiter(requests_per_minute=10)
 modify_limiter = SimpleRateLimiter(requests_per_minute=10)
 recompute_limiter = SimpleRateLimiter(requests_per_minute=40)
+
+
+def _rate_limit_key(current_user: Optional[User], client_ip: str) -> str:
+    """Per-user rate key when authenticated, else per-IP."""
+    if current_user is not None and getattr(current_user, "id", None):
+        return f"user:{current_user.id}"
+    return f"ip:{client_ip}"
+
+
+async def _enforce_download_access(
+    script_id: str,
+    current_user: Optional[User],
+    db,
+) -> None:
+    """Shared ownership gate for single-file and batch downloads.
+
+    Allows: missing record (legacy/anon), public generations, or the owning
+    user. Otherwise raises 403.
+    """
+    try:
+        if db is not None:
+            from models.project import Generation
+            result = await db.execute(select(Generation).where(Generation.script_id == script_id))
+            generation = result.scalars().first()
+            if generation is not None:
+                is_public = bool(getattr(generation, "is_public", False))
+                is_owner = bool(current_user and generation.user_id == current_user.id)
+                if not (is_public or is_owner):
+                    raise HTTPException(status_code=403, detail="Access denied. This model is private.")
+    except HTTPException:
+        raise
+    except Exception as dbe:
+        logger.warning(f"[DOWNLOAD] Ownership lookup failed for {script_id}: {dbe}")
 
 
 
@@ -305,11 +340,13 @@ async def generate_part(
     if ENVIRONMENT == "production" and current_user is None:
         raise HTTPException(status_code=403, detail="Authentication required. Production compute requires login.")
     client_ip = request.client.host if request.client else "unknown"
-    remaining, reset_in = await generate_limiter.check(client_ip)
+    remaining, reset_in = await generate_limiter.check(_rate_limit_key(current_user, client_ip))
     if response:
         response.headers["X-RateLimit-Limit"] = str(generate_limiter.rpm)
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(reset_in)
+    if current_user is not None:
+        await check_and_bump_quota(current_user, db)
 
     script_id = f"part_{uuid.uuid4().hex[:12]}"
     self_correction_attempts = 0
@@ -463,7 +500,9 @@ async def generate_part_stream(
     if ENVIRONMENT == "production" and current_user is None:
         raise HTTPException(status_code=403, detail="Authentication required. Production compute requires login.")
     client_ip = request.client.host if request.client else "unknown"
-    await generate_limiter.check(client_ip)
+    await generate_limiter.check(_rate_limit_key(current_user, client_ip))
+    if current_user is not None:
+        await check_and_bump_quota(current_user, db)
 
     async def event_generator():
         import json
@@ -630,7 +669,7 @@ async def recompute_part(
         raise HTTPException(status_code=403, detail="Authentication required. Production compute requires login.")
     if request:
         client_ip = request.client.host if request.client else "unknown"
-        remaining, reset_in = await recompute_limiter.check(client_ip)
+        remaining, reset_in = await recompute_limiter.check(_rate_limit_key(current_user, client_ip))
         if response:
             response.headers["X-RateLimit-Limit"] = str(recompute_limiter.rpm)
             response.headers["X-RateLimit-Remaining"] = str(remaining)
@@ -751,6 +790,51 @@ async def get_script_code(script_id: str, x_admin_token: str | None = Header(def
 # Download Endpoint
 # ---------------------------------------------------------------------------
 
+@app.get("/api/download/{script_id}/all")
+async def download_all_models(
+    script_id: str,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download every existing mesh artifact for a script_id as a single ZIP."""
+    if not is_safe_script_id(script_id):
+        raise HTTPException(status_code=400, detail="Invalid script identifier.")
+
+    await _enforce_download_access(script_id, current_user, db)
+
+    members: list[tuple[str, Path]] = []
+    for ext in ("stl", "step", "obj", "glb"):
+        candidate = MODELS_DIR / f"{script_id}.{ext}"
+        try:
+            if candidate.is_file():
+                members.append((f"{script_id}.{ext}", candidate))
+        except OSError:
+            continue
+    if not members:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No artifacts found for '{script_id}'. "
+                   f"Ensure the model was generated successfully before downloading.",
+        )
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for arcname, path in members:
+            try:
+                archive.write(str(path), arcname=arcname)
+            except OSError as e:
+                logger.warning(f"[DOWNLOAD-ALL] Could not add {path}: {e}")
+    if buf.tell() == 0:
+        raise HTTPException(status_code=404, detail=f"No artifacts found for '{script_id}'.")
+    buf.seek(0)
+    download_filename = f"{script_id}_all.zip"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{download_filename}"'},
+    )
+
+
 @app.get("/api/download/{script_id}/{fmt}")
 async def download_model(
     script_id: str,
@@ -766,23 +850,8 @@ async def download_model(
     if not is_safe_script_id(script_id):
         raise HTTPException(status_code=400, detail="Invalid script identifier.")
 
-    # Ownership gate: allow legacy/anon artifacts (no DB record), public
-    # generations, or the owning user. Otherwise require authentication.
-    try:
-        if db is not None:
-            from models.project import Generation
-            result = await db.execute(select(Generation).where(Generation.script_id == script_id))
-            generation = result.scalars().first()
-            if generation is not None:
-                is_public = bool(getattr(generation, "is_public", False))
-                is_owner = bool(current_user and generation.user_id == current_user.id)
-                if not (is_public or is_owner):
-                    raise HTTPException(status_code=403, detail="Access denied. This model is private.")
-    except HTTPException:
-        raise
-    except Exception as dbe:
-        logger.warning(f"[DOWNLOAD] Ownership lookup failed for {script_id}: {dbe}")
-    
+    await _enforce_download_access(script_id, current_user, db)
+
     fmt_lower = fmt.lower().strip(".")
     allowed_formats = {
         "stl":  "application/sla",
@@ -854,11 +923,13 @@ async def modify_part(
     if ENVIRONMENT == "production" and current_user is None:
         raise HTTPException(status_code=403, detail="Authentication required. Production compute requires login.")
     client_ip = request.client.host if request.client else "unknown"
-    remaining, reset_in = await modify_limiter.check(client_ip)
+    remaining, reset_in = await modify_limiter.check(_rate_limit_key(current_user, client_ip))
     if response:
         response.headers["X-RateLimit-Limit"] = str(modify_limiter.rpm)
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(reset_in)
+    if current_user is not None:
+        await check_and_bump_quota(current_user, db)
 
     # Generate a versioned script_id to preserve original
     base_id = re.sub(r'_v\d+$', '', payload.script_id)   # Strip existing _v1, _v2 suffix

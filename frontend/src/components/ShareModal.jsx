@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 export default function ShareModal({ isOpen, onClose, scriptId, partName, meshUrl, stepUrl }) {
+  const containerRef = useRef(null);
+  useFocusTrap(containerRef, isOpen && !!scriptId);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedEmbed, setCopiedEmbed] = useState(false);
   const [copyError, setCopyError] = useState(null);
@@ -45,6 +48,7 @@ export default function ShareModal({ isOpen, onClose, scriptId, partName, meshUr
     <div className="modal-backdrop" onClick={onClose}>
       <div
         className="modal-card"
+        ref={containerRef}
         style={{ maxWidth: '480px' }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"

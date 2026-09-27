@@ -7,6 +7,8 @@
  *   onChange(name, value) - called on every slider change
  */
 
+import { useState, useEffect } from 'react';
+
 export default function ParameterSlider({ param, value, onChange }) {
   // Defensive fallback for steps that the backend may omit on some payloads
   const stepVal = param.step ?? 1.0;
@@ -26,6 +28,29 @@ export default function ParameterSlider({ param, value, onChange }) {
     if (!isNaN(val)) {
       onChange(param.name, val);
     }
+  };
+
+  // Local editing state for the number field: allows clearing / partially
+  // typing a value without it snapping back on each keystroke. Only valid
+  // numbers are committed (on blur or Enter); slider drag is unaffected.
+  const [draft, setDraft] = useState(null);
+
+  // External value changes (slider drag, steppers, reset) discard any
+  // in-progress draft so the field never shows a stale value.
+  useEffect(() => {
+    setDraft(null);
+  }, [numValue]);
+
+  const commitDraft = () => {
+    if (draft === null) return;
+    const trimmed = draft.trim();
+    if (trimmed !== '') {
+      const val = parseFloat(trimmed);
+      if (!Number.isNaN(val)) {
+        onChange(param.name, val);
+      }
+    }
+    setDraft(null);
   };
 
   const handleReset = () => {
@@ -66,11 +91,19 @@ export default function ParameterSlider({ param, value, onChange }) {
               aria-label={`${param.label || param.name} value`}
               type="number"
               className="param-number-input"
-              value={displayVal}
+              value={draft ?? displayVal}
               min={param.min}
               max={param.max}
               step={stepVal}
-              onChange={handleChange}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commitDraft}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitDraft();
+                  e.target.blur();
+                }
+              }}
             />
             {unit && <span className="param-unit-badge">{unit}</span>}
           </div>

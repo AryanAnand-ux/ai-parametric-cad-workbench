@@ -1,4 +1,5 @@
 import React from 'react';
+import { downloadAllFormats } from '../api';
 
 /**
  * ViewportToolbar — Controls 3D view mode, camera angle, material finish, background environment, and export dropdown.
@@ -22,6 +23,7 @@ export default function ViewportToolbar({
   glbUrl,
   pythonCode,
   partName,
+  scriptId,
   openDropdown,
   setOpenDropdown,
   toggleDropdown,
@@ -256,6 +258,22 @@ export default function ViewportToolbar({
                 <span className="item-dot active" />
                 <span>Python CAD Script <span style={{ opacity: 0.5, fontSize: '10px' }}>.py</span></span>
               </button>
+            )}
+            <div className="vt-dropdown-label" style={{ marginTop: '8px' }}>Archive</div>
+            {scriptId ? (
+              <button
+                type="button"
+                className="vt-dropdown-item"
+                onClick={() => { downloadAllFormats(scriptId); setOpenDropdown(null); }}
+              >
+                <span className="item-dot active" />
+                <span>Export all (.zip) <span style={{ opacity: 0.5, fontSize: '10px' }}>STL + STEP + OBJ + GLB</span></span>
+              </button>
+            ) : (
+              <div className="vt-dropdown-item" style={{ opacity: 0.5, cursor: 'not-allowed' }}>
+                <span className="item-dot" />
+                <span>Export all (.zip) (generate first)</span>
+              </div>
             )}
           </div>
         )}

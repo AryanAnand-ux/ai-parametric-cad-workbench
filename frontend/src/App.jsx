@@ -38,6 +38,7 @@ import {
   publishDesign,
 } from './api';
 import { VISUAL_STYLES, VIEWPORT_BACKGROUNDS } from './constants/visualStyles';
+import { logger } from './utils/logger';
 
 // Code-split the heavy Three.js viewer so the initial bundle stays lean.
 // Fallback is null: the empty-canvas prompt card below renders independently,
@@ -292,7 +293,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
         updateStream({ phase: 'rag_retrieval', progress: 0, message: '', attempts: 0 });
         return;
       }
-      console.warn('[SSE stream fallback to standard POST]', streamErr);
+      logger.warn('[SSE stream fallback to standard POST]', streamErr);
       try {
         const res = await generatePart(activePrompt);
         if (controller.signal.aborted) return;
@@ -302,7 +303,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
           updateStream({ phase: 'rag_retrieval', progress: 0, message: '', attempts: 0 });
           return;
         }
-        console.error('[Generate error]', err);
+        logger.error('[Generate error]', err);
         const detail = err.response?.data?.detail;
         setError(typeof detail === 'string' ? detail : (detail?.error || err.message || streamErr.message || 'Generation failed. Check backend log.'));
       }
@@ -340,7 +341,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
       });
       setShowProjectSidebar(false);
     } catch (err) {
-      console.error('Failed to load saved model:', err);
+      logger.error('Failed to load saved model:', err);
       setError('Could not load saved model.');
     } finally {
       setLoading(false);
@@ -380,7 +381,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
       setPublishSuccess(true);
       setTimeout(() => setPublishSuccess(false), 4000);
     } catch (err) {
-      console.error('Failed to publish to gallery:', err);
+      logger.error('Failed to publish to gallery:', err);
       const detail = err.response?.data?.detail || 'Failed to publish to community gallery.';
       setError(detail);
     } finally {
@@ -419,7 +420,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
         },
       ]);
     } catch (err) {
-      console.error('[Modify error]', err);
+      logger.error('[Modify error]', err);
       const detail = err.response?.data?.detail;
       const msg2 = typeof detail === 'string' ? detail : (detail?.error || err.message || 'Modification failed.');
       setError(`Modify error: ${msg2}`);
@@ -459,7 +460,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
         setRecomputeSuccess(res);
       } catch (err) {
         if (requestSequence !== recomputeSequenceRef.current) return;
-        console.error('[Recompute error]', err);
+        logger.error('[Recompute error]', err);
         const detail = err.response?.data?.detail;
         const msg = typeof detail === 'string' ? detail : (detail?.error || err.message || 'Recomputation failed.');
         setError(`Recomputation error: ${msg}`);
@@ -492,7 +493,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
       setRecomputeSuccess(res);
     } catch (err) {
       if (requestSequence !== recomputeSequenceRef.current) return;
-      console.error('[Reset error]', err);
+      logger.error('[Reset error]', err);
       const detail = err.response?.data?.detail;
       const message = typeof detail === 'string' ? detail : (detail?.error || err.message || 'Reset recomputation failed.');
       setError(`Reset error: ${message}`);
@@ -520,7 +521,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
       setRecomputeSuccess(res);
     } catch (err) {
       if (requestSequence !== recomputeSequenceRef.current) return;
-      console.error('[Force recompute error]', err);
+      logger.error('[Force recompute error]', err);
       const detail = err.response?.data?.detail;
       const msg = typeof detail === 'string' ? detail : (detail?.error || err.message || 'Recomputation failed.');
       setError(`Recomputation error: ${msg}`);
@@ -640,6 +641,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
           glbUrl={glbUrl}
           pythonCode={pythonCode}
           partName={partName}
+          scriptId={scriptId}
           openDropdown={openDropdown}
           setOpenDropdown={setOpenDropdown}
           toggleDropdown={toggleDropdown}
@@ -755,7 +757,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
           <button
             className="toolbar-btn header-action-btn header-icon-only-btn"
             onClick={() => setShowOnboarding(true)}
-            title="Interactive Studio Tour"
+            title="Interactive Studio Tour (?)"
           >
             <span>💡</span>
           </button>

@@ -13,6 +13,9 @@ const FEATURED_TAGS = [
   'manifold', 'aerospace', 'robotics', 'thermal', 'fixture'
 ];
 
+// Must match the backend default page size (api.js getGallery perPage default).
+const PER_PAGE = 20;
+
 function formatGalleryDate(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -238,20 +241,34 @@ export default function Gallery({ onGoToApp }) {
   const [activeTag, setActiveTag] = useState('');
   const [sortBy, setSortBy] = useState('recent');
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [forkMessage, setForkMessage] = useState(null);
   const forkTimerRef = useRef(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const isAppend = page > 1;
+    if (isAppend) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     try {
-      const res = await getGallery({ page, search, tag: activeTag, sortBy });
-      setItems(res.items || []);
+      const res = await getGallery({ page, perPage: PER_PAGE, search, tag: activeTag, sortBy });
+      const newItems = res.items || [];
+      setItems((prev) => (isAppend ? [...prev, ...newItems] : newItems));
       setTotal(res.total || 0);
-      setPages(res.pages || 1);
+      const totalPages = res.pages || 1;
+      setPages(totalPages);
+      // End of list: fewer than a full page returned, or last page reached.
+      setHasMore(newItems.length >= PER_PAGE && page < totalPages);
     } catch {
-      setItems([]);
+      if (!isAppend) {
+        setItems([]);
+      }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, [page, search, activeTag, sortBy]);
 
@@ -465,32 +482,25 @@ export default function Gallery({ onGoToApp }) {
           </div>
         )}
 
-        {/* Pagination */}
-        {pages > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '40px' }}>
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-              style={{
-                padding: '8px 18px', borderRadius: '6px', border: '1px solid rgba(71,64,64,0.2)',
-                background: page === 1 ? '#F6F6F0' : '#fff', color: '#474040',
-                cursor: page === 1 ? 'default' : 'pointer', fontSize: '12px',
-                fontFamily: 'var(--font-sans)', opacity: page === 1 ? 0.5 : 1,
-              }}
-            >← Prev</button>
-            <span style={{ padding: '8px 14px', fontSize: '12px', color: '#6B6363', fontFamily: 'var(--font-mono)' }}>
-              {page} / {pages}
-            </span>
-            <button
-              onClick={() => setPage(p => Math.min(pages, p + 1))}
-              disabled={page === pages}
-              style={{
-                padding: '8px 18px', borderRadius: '6px', border: '1px solid rgba(71,64,64,0.2)',
-                background: page === pages ? '#F6F6F0' : '#fff', color: '#474040',
-                cursor: page === pages ? 'default' : 'pointer', fontSize: '12px',
-                fontFamily: 'var(--font-sans)', opacity: page === pages ? 0.5 : 1,
-              }}
-            >Next →</button>
+        {/* Load more */}
+        {!loading && items.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', marginTop: '40px' }}>
+            {hasMore ? (
+              <button
+                onClick={() => setPage(p => Math.min(pages, p + 1))}
+                disabled={loadingMore}
+                style={{
+                  padding: '10px 28px', borderRadius: '8px', border: '1px solid rgba(71,64,64,0.2)',
+                  background: '#474040', color: '#FFFDE2',
+                  cursor: loadingMore ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600,
+                  fontFamily: 'var(--font-sans)', opacity: loadingMore ? 0.7 : 1,
+                }}
+              >{loadingMore ? 'Loading…' : 'Load more'}</button>
+            ) : (
+              <div style={{ fontSize: '12px', color: '#99908F', fontFamily: 'var(--font-sans)' }}>
+                You&apos;ve reached the end — showing all {total} design{total === 1 ? '' : 's'}.
+              </div>
+            )}
           </div>
         )}
       </div>

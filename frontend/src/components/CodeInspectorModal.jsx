@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 /**
  * CodeInspectorModal — Dialog for viewing and copying the generated Python CAD build123d script.
@@ -12,6 +13,8 @@ export default function CodeInspectorModal({
   onError,
 }) {
   const [copied, setCopied] = useState(false);
+  const containerRef = useRef(null);
+  useFocusTrap(containerRef, isOpen && !!pythonCode);
 
   if (!isOpen || !pythonCode) return null;
 
@@ -30,6 +33,7 @@ export default function CodeInspectorModal({
     <div className="modal-backdrop" onClick={onClose}>
       <div
         className="modal-card"
+        ref={containerRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="code-modal-title"

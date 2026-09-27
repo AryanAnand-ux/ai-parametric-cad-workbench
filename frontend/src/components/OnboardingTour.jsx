@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 const TOUR_STEPS = [
   {
@@ -50,6 +51,8 @@ const TOUR_STEPS = [
 
 export default function OnboardingTour({ isOpen, onClose }) {
   const [currentStep, setCurrentStep] = useState(0);
+  const containerRef = useRef(null);
+  useFocusTrap(containerRef, isOpen);
 
   const handleDismiss = () => {
     localStorage.setItem('cad_tour_completed', '1');
@@ -91,6 +94,7 @@ export default function OnboardingTour({ isOpen, onClose }) {
     <div className="modal-backdrop" onClick={handleDismiss}>
       <div
         className="modal-card"
+        ref={containerRef}
         style={{ maxWidth: '520px' }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"

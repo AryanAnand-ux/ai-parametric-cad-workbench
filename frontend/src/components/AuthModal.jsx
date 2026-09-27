@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 export default function AuthModal({ isOpen, onClose, onLogin, onRegister }) {
   const [mode, setMode] = useState('login'); // 'login' | 'register'
@@ -7,6 +8,8 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister }) {
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const containerRef = useRef(null);
+  useFocusTrap(containerRef, isOpen);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -45,6 +48,7 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister }) {
     <div className="modal-backdrop" onClick={onClose}>
       <div
         className="modal-card"
+        ref={containerRef}
         style={{ maxWidth: '440px' }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
