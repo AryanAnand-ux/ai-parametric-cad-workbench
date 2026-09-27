@@ -292,6 +292,9 @@ Backend: RAG empty-embedding guards, SSE `is_disconnected` abort, `save_version_
 ### Round 3 (same day)
 Backend: daily quota 50/day free (`check_and_bump_quota`, `test_quota.py` 10 tests), per-user rate keys, `GET /api/download/{id}/all` ZIP export with ownership gate. Frontend: `useFocusTrap` on 4 overlays, gallery load-more append, export-all archive button, dev-only `utils/logger`, slider draft typing, tour `?` hint. Plus `.github/dependabot.yml` (pip/npm/actions weekly). Suite 79/79 (14 files).
 
+### Round 5 (same day) — dependency wave
+Merged: actions/checkout+setup-node+setup-python v7, vite 8.3.1, plugin-react 6.1.1, three 0.186.1, fiber 9.8.0, react-dom bump. Applied manually + verified locally: dotenv 1.2.3, shapely 2.1.2, trimesh 5.1.0, chromadb 1.5.9 (old 0.5-persisted index reads fine on 1.x; RAG tests green). Closed superseded PRs. Suite 79/79, Vite build clean.
+
 ### Round 4 (same day)
 Backend: `python-jose` → PyJWT (`InvalidTokenError as JWTError`, incl. telemetry unverified-decode path), `asyncpg` driver added, compose gains `postgres:16` service (SQLite default unchanged), Dockerfile 3.11 to match CI. Closed obsolete jose-bump PR; merged vite 8.3.1 + plugin-react 6.1.1 (both green). Frontend: tour resources step (build123d docs), face-count chip, VITE_API_URL comment, gallery date fallback, hero CLS dims. Suite 79/79, build + lint clean.
 

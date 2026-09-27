@@ -88,6 +88,7 @@
 - [x] Round-2 hardening — RAG guards, SSE disconnect, version-record fields, LLM timeouts, tag escaping, DB indexes, atomic likes, pagination, sort/tag validation, bcrypt limit, telemetry caps, subprocess cwd, stderr scrub, security headers, 480px CSS, viewer code-split, health polling, alert→inline, escape-to-close
 - [x] Round-3 product + a11y — daily quotas (50/day free), per-user rate keys, batch ZIP export, focus-trap system, gallery load-more, export-all button, dev-only logger, slider drafts, Dependabot
 - [x] Round-4 stack — PyJWT swap (jose removed), Postgres-ready compose, Dockerfile 3.11, tour docs link, telemetry face chip, merged vite + plugin-react bumps
+- [x] Round-5 dependency wave — merged actions/checkout+setup-node+setup-python v7, vite, plugin-react, three, fiber, react-dom; applied dotenv/shapely/trimesh-5/chromadb-1.5 manually (RAG verified on chroma 1.x), closed superseded PRs
 - [x] Round-3 product + a11y — daily quotas (50/day free), per-user rate keys, batch ZIP export, focus-trap system, gallery load-more, export-all button, dev-only logger, slider drafts, Dependabot
 
 
