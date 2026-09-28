@@ -92,6 +92,7 @@
 - [x] Gallery→workspace handoff — fork banner deep-links `#model=<fork_id>`, deep links override cached models, fork regenerates missing geometry + self-contained artifacts, detail endpoint serves obj/glb URLs
 - [x] Archetype geometry verification — robust single-solid build123d topology for V-Belt Pulley, Flanged Pipe Elbow, HVAC Transition Duct; all 8 community gallery models seeded and verified
 - [x] Frontend runtime fix — added missing `useCallback` import in `OnboardingTour.jsx` preventing component crash on first visit
+- [x] Doc consolidation — deleted `architecture.md` + `memory.md` as duplicates; doc set is now README, AGENTS, rules, CODEBASE_GUIDE, prd, design, task, CHANGELOG
 
 ---
 

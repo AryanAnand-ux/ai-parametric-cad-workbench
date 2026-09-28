@@ -1,8 +1,8 @@
 # AGENTS.md — AI Parametric CAD Workbench
 
-Agent notes for this repo. `rules.md` (coding standards), `CODEBASE_GUIDE.md` (file-by-file
-architecture) and `memory.md` (decisions/gotchas) remain the sources of truth; this file only
-records what an agent would otherwise get wrong.
+Agent notes for this repo. `rules.md` (coding standards) and `CODEBASE_GUIDE.md` (file-by-file
+architecture) are the sources of truth; this file holds the operational gotchas and commands that
+would otherwise cost an agent a debugging session.
 
 ## Layout & entrypoints
 
@@ -21,7 +21,7 @@ records what an agent would otherwise get wrong.
 ```powershell
 # backend — always use the venv interpreter, plain `python` may be the wrong one
 cd backend
-.\venv\Scripts\python.exe -m pytest -q --tb=short          # 80 collected / 14 files, ~100s
+.\venv\Scripts\python.exe -m pytest -q --tb=short          # 80 tests / 14 files, ~105s
 .\venv\Scripts\python.exe -m pytest test_ast_security.py -v # single file
 .\venv\Scripts\python.exe main.py                          # honours RELOAD env (default: no reload)
 .\venv\Scripts\python.exe -m uvicorn main:app --reload --port 8000
@@ -30,7 +30,7 @@ cd backend
 cd frontend
 npm run dev        # Vite :5173
 npm run build      # production bundle
-npm run lint       # oxlint — expect 0 errors; ~10 pre-existing warnings are tolerated
+npm run lint       # oxlint — currently 0 errors / 0 warnings; keep it there
 ```
 
 - `backend/pytest.ini` sets `asyncio_mode = auto` and `testpaths = .` → run pytest **from
@@ -86,6 +86,12 @@ npm run lint       # oxlint — expect 0 errors; ~10 pre-existing warnings are t
     `resolveAssetUrl()` so `VITE_API_URL` still applies.
 12. **A second git worktree is checked out at `.kilo/worktrees/north-composer`** (untracked, same
     commit). Don't edit or commit files from there.
+13. **`build123d` import costs 3–5s** in a fresh subprocess (OpenCASCADE/OCCT load), so the first
+    CAD run of a session is always slow — that is not a hang. ChromaDB prints a telemetry
+    opt-in warning on first run; set `ANONYMIZED_TELEMETRY=false` to silence it.
+14. **SQLite is the default but not the ceiling.** `DATABASE_URL` can point at PostgreSQL
+    (`asyncpg` is a dependency and `docker-compose.yml` ships a `postgres:16` service);
+    concurrent writes queue under SQLite, so migration is the documented fix, not more pragmas.
 
 ## Working agreements
 
@@ -93,12 +99,14 @@ npm run lint       # oxlint — expect 0 errors; ~10 pre-existing warnings are t
   wants a feature branch + PR; recent history also pushed straight to `main`. Keep CI green either
   way.
 - **Mandatory live-update rule (`rules.md` §6.2): every code change updates the matching doc in the
-  same commit** — API/schema → `prd.md` + `architecture.md`; new service/module → `architecture.md`;
-  UI/styles → `design.md`; new convention → `rules.md`; bug fix or decision → `memory.md`;
-  finished task → `task.md`; env var → `memory.md` + `backend/.env.example`; dependency →
-  `architecture.md`. Do not add ad-hoc markdown at the repo root — fold content into the existing
+  same commit** — API/schema → `prd.md` + `CODEBASE_GUIDE.md`; new service/module →
+  `CODEBASE_GUIDE.md`; UI/styles → `design.md`; new convention → `rules.md`; bug fix or decision →
+  `CHANGELOG.md`; finished task → `task.md`; env var → `backend/.env.example`; dependency →
+  `CODEBASE_GUIDE.md`. Do not add ad-hoc markdown at the repo root — fold content into the existing
   docs.
 - Test counts in the docs drift (79 vs 80). Trust `pytest --collect-only`, and fix the docs when
   you notice drift.
-- `CODEBASE_GUIDE.md` is the most complete map of the codebase; `architecture.md` covers system
-  design and `design.md` the UI system. Read the relevant one before touching unfamiliar areas.
+- The doc set is deliberately small: `README.md` (quickstart), `AGENTS.md` (this file), `rules.md`
+  (standards), `CODEBASE_GUIDE.md` (architecture + file-by-file), `prd.md` (API contracts),
+  `design.md` (UI system), `task.md` (backlog), `CHANGELOG.md` (history). `architecture.md` and
+  `memory.md` were removed as duplicates — do not recreate them; extend the files above instead.

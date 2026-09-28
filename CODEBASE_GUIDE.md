@@ -187,12 +187,11 @@ graph TD
 | `docker-compose.yml` | Multi-container Docker orchestration. Spins up the FastAPI backend and Nginx-served Vite frontend. Configured with volume mounts for persistent database and CAD model scratch space. |
 | `Dockerfile` | Multi-stage production container build for the Python backend. Installs OpenCASCADE libraries, `build123d`, PyTorch, sentence-transformers, and sets up non-root security. |
 | `README.md` | Primary developer onboarding documentation: quick-start commands, prerequisites, setup instructions, and feature overview. |
-| `architecture.md` | Comprehensive architectural blueprint: pipeline details, 4-tier fallback matrix, OpenCASCADE data flow, and error taxonomy. |
-| `prd.md` | Product Requirements Document: specifies target user personas, core features, engineering constraints, and product roadmap. |
+| `prd.md` | Product Requirements Document: specifies target user personas, core features, engineering constraints, and the API contract table. |
 | `design.md` | UI/UX Design System Specification: defines the Technical Neobrutalist Bento design system, typography (Inter + Outfit), color palette, and micro-interactions. |
-| `rules.md` | Engineering guidelines and coding standards: strict constraints on build123d API usage, forbidden CAD patterns, and AST sandbox rules. |
+| `rules.md` | Engineering guidelines and coding standards: strict constraints on build123d API usage, forbidden CAD patterns, AST sandbox rules, and doc-ownership/live-update policy. |
 | `task.md` | Active sprint tracking board: backlog items, completed features, and implementation notes. |
-| `memory.md` | Persistent architectural memory: records critical debugging solutions, architectural decisions, and key technical learnings. |
+| `AGENTS.md` | Agent-facing notes: verified dev commands, CI scope, and the operational gotchas that are expensive to rediscover. |
 | `CHANGELOG.md` | Strict Keep-a-Changelog format documenting all additions, fixes, dependency upgrades, and security patches. |
 | `dev.bat` | One-click Windows launch script. Automatically starts both backend uvicorn server and Vite frontend server in separate terminals. |
 | `.gitignore` | Prevents environment keys (`.env`), Python caches, temporary CAD meshes (`.stl`, `.step`), databases, and `node_modules` from entering git. |

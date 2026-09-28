@@ -51,12 +51,10 @@ docker-compose up --build
 |------|---------|
 | [CODEBASE_GUIDE.md](./CODEBASE_GUIDE.md) | Comprehensive file-by-file technical guide & system walkthrough |
 | [AGENTS.md](./AGENTS.md) | Tooling notes, commands and gotchas for AI agents |
-| [prd.md](./prd.md) | Product requirements — what & why |
-| [architecture.md](./architecture.md) | System design — how it's built |
+| [prd.md](./prd.md) | Product requirements — what & why, plus API contracts |
 | [design.md](./design.md) | UI/UX design system |
 | [rules.md](./rules.md) | Coding standards & constraints |
 | [task.md](./task.md) | Active tasks & backlog |
-| [memory.md](./memory.md) | Key decisions, known issues, session notes |
 | [CHANGELOG.md](./CHANGELOG.md) | Version history |
 
 ---

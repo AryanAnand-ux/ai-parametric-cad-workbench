@@ -30,6 +30,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **CAD Archetypes topology** — resolved non-manifold/multi-solid defects in V-Belt Pulley, Flanged Pipe Elbow, and HVAC Transition Duct in `examples_universal.py`, ensuring 100% single-solid B-Rep compilation
 - **Onboarding tour crash** — added missing `useCallback` import in `OnboardingTour.jsx` eliminating `ReferenceError: useCallback is not defined`
 - **Gallery seeding** — all 8 community models seeded with verified watertight STL meshes and parameters
+- **Doc consolidation** — removed duplicate `architecture.md` (superseded by `CODEBASE_GUIDE.md`) and `memory.md` (superseded by `AGENTS.md` + `CHANGELOG.md`); `rules.md` §6.1/§6.2 now route live-updates to the surviving files, and `AGENTS.md` absorbs the build123d import-cost, ChromaDB telemetry and Postgres-ceiling gotchas
 
 ### Planned
 - PostgreSQL migration (replace SQLite for production)

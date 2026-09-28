@@ -179,6 +179,6 @@ Landing Page
 |-----|--------|
 | Generation success rate | 85%+ |
 | Recompute success rate | 95%+ |
-| Test suite pass rate | 33/33 (100%) |
+| Test suite pass rate | 80/80 (100%) |
 | Benchmark weekly CI pass | 85%+ prompt success |
 | User retention (session >5 min) | 40%+ |
