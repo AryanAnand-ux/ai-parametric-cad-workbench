@@ -48,7 +48,7 @@ export default function CodeInspectorModal({
               </svg>
             </span>
             <div>
-              <div className="modal-title" id="code-modal-title">build123d Python Script ({scriptId})</div>
+              <div className="modal-title" id="code-modal-title">build123d Python Script ({partName || scriptId})</div>
               <div className="modal-subtitle">Runtime build123d script with injected export paths</div>
             </div>
           </div>

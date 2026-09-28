@@ -337,14 +337,31 @@ export async function getMetrics() {
 // the <a href download> export links used throughout the workbench.
 // ---------------------------------------------------------------------------
 
-export function downloadAllFormats(scriptId) {
-  const baseUrl = BASE_URL.replace(/\/+$/, '');
-  const url = `${baseUrl}/api/download/${scriptId}/all`;
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${scriptId}.zip`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+export async function downloadAllFormats(scriptId) {
+  const token = getAuthToken();
+  try {
+    const res = await api.get(`/api/download/${scriptId}/all`, {
+      responseType: 'blob',
+      params: token ? { token } : {},
+    });
+    const blob = new Blob([res.data], { type: 'application/zip' });
+    const blobUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = `${scriptId}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
+  } catch {
+    const baseUrl = BASE_URL.replace(/\/+$/, '');
+    const url = `${baseUrl}/api/download/${scriptId}/all${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${scriptId}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
 }
 

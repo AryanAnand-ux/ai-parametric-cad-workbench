@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
-export default function ShareModal({ isOpen, onClose, scriptId, partName, meshUrl, stepUrl }) {
+export default function ShareModal({ isOpen, onClose, scriptId, generationId, partName, meshUrl, stepUrl }) {
   const containerRef = useRef(null);
   useFocusTrap(containerRef, isOpen && !!scriptId);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -19,8 +19,9 @@ export default function ShareModal({ isOpen, onClose, scriptId, partName, meshUr
 
   if (!isOpen || !scriptId) return null;
 
-  const shareUrl = `${window.location.origin}/#model=${scriptId}`;
-  const embedCode = `<iframe src="${window.location.origin}/#embed=${scriptId}" width="800" height="600" frameborder="0" allowfullscreen></iframe>`;
+  const modelRefId = generationId || scriptId;
+  const shareUrl = `${window.location.origin}/#model=${encodeURIComponent(modelRefId)}`;
+  const embedCode = `<iframe src="${window.location.origin}/#embed=${encodeURIComponent(modelRefId)}" width="800" height="600" frameborder="0" allowfullscreen></iframe>`;
 
   const handleCopyLink = async () => {
     try {

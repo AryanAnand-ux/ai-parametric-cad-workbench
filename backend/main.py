@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from collections import defaultdict
 from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Request, Depends, Response
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Request, Depends, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 try:
@@ -43,7 +43,7 @@ from services import gemini_web_client
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import create_tables, get_db
 from models.user import User
-from services.auth_service import check_and_bump_quota, get_optional_user
+from services.auth_service import check_and_bump_quota, get_optional_user, decode_token
 from routes.auth import router as auth_router
 from routes.projects import router as projects_router, save_generation_record, save_version_record
 from routes.gallery import gallery_router
@@ -135,14 +135,27 @@ async def _enforce_download_access(
     script_id: str,
     current_user: Optional[User],
     db,
+    token: Optional[str] = None,
 ) -> None:
     """Shared ownership gate for single-file and batch downloads.
 
     Allows: missing record (legacy/anon), public generations, or the owning
-    user. Otherwise raises 403.
+    user (authenticated via Authorization header or token query parameter).
+    Otherwise raises 403.
     """
     try:
         if db is not None:
+            if current_user is None and token:
+                try:
+                    payload = decode_token(token)
+                    if payload.get("type") == "access":
+                        uid = payload.get("sub")
+                        if uid:
+                            res = await db.execute(select(User).where(User.id == uid, User.is_active == True))
+                            current_user = res.scalar_one_or_none()
+                except Exception:
+                    pass
+
             from models.project import Generation
             result = await db.execute(select(Generation).where(Generation.script_id == script_id))
             generation = result.scalars().first()
@@ -793,6 +806,7 @@ async def get_script_code(script_id: str, x_admin_token: str | None = Header(def
 @app.get("/api/download/{script_id}/all")
 async def download_all_models(
     script_id: str,
+    token: Optional[str] = Query(None),
     current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -800,7 +814,7 @@ async def download_all_models(
     if not is_safe_script_id(script_id):
         raise HTTPException(status_code=400, detail="Invalid script identifier.")
 
-    await _enforce_download_access(script_id, current_user, db)
+    await _enforce_download_access(script_id, current_user, db, token=token)
 
     members: list[tuple[str, Path]] = []
     for ext in ("stl", "step", "obj", "glb"):
@@ -840,6 +854,7 @@ async def download_model(
     script_id: str,
     fmt: str,
     x_admin_token: str | None = Header(default=None),
+    token: Optional[str] = Query(None),
     current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -850,7 +865,7 @@ async def download_model(
     if not is_safe_script_id(script_id):
         raise HTTPException(status_code=400, detail="Invalid script identifier.")
 
-    await _enforce_download_access(script_id, current_user, db)
+    await _enforce_download_access(script_id, current_user, db, token=token)
 
     fmt_lower = fmt.lower().strip(".")
     allowed_formats = {

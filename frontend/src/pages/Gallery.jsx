@@ -79,6 +79,18 @@ function DesignCard({ item, onFork }) {
         e.currentTarget.style.boxShadow = 'none';
         e.currentTarget.style.transform = 'translateY(0)';
       }}
+      onClick={() => {
+        window.location.hash = `#model=${encodeURIComponent(item.id || item.script_id)}`;
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          window.location.hash = `#model=${encodeURIComponent(item.id || item.script_id)}`;
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${item.part_name || 'CAD design'} in 3D Workbench`}
     >
       {/* Preview thumbnail */}
       <div

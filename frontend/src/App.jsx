@@ -110,7 +110,6 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
   const {
     state,
     paramValuesRef,
-    setField,
     setError,
     dismissError,
     applyPartResponse,
@@ -152,7 +151,6 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
     generationId,
     scriptId,
     partName,
-    description,
     pythonCode,
     parameters,
     parameterSearch,
@@ -163,7 +161,6 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
     glbUrl,
     meshInfo,
     recompTime,
-    modelUsed,
     designMode,
     components,
     backendStatus,
@@ -470,7 +467,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
         if (requestSequence === recomputeSequenceRef.current) setRecomputing(false);
       }
     }, 120);
-  }, [parameters, scriptId, pythonCode, designMode, components, setRecomputing, setRecomputeSuccess, setError, updateParamValue]);
+  }, [parameters, scriptId, pythonCode, designMode, components, setRecomputing, setRecomputeSuccess, setError, updateParamValue, paramValuesRef]);
 
   // Reset all sliders to defaults AND trigger recompute on canvas
   const handleResetAll = async () => {
@@ -537,6 +534,11 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
     viewerRef.current?.setCameraView(view);
   };
 
+  const handleGenerateRef = useRef(handleGenerate);
+  handleGenerateRef.current = handleGenerate;
+  const handleForceRecomputeRef = useRef(handleForceRecompute);
+  handleForceRecomputeRef.current = handleForceRecompute;
+
   // Global keyboard shortcuts — only fire when no input/textarea/select is focused
   useEffect(() => {
     const handleKey = (e) => {
@@ -546,12 +548,12 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
       switch (e.key) {
         case 'g': case 'G':
           e.preventDefault();
-          handleGenerate();
+          handleGenerateRef.current();
           break;
         case 'r': case 'R':
           if (scriptId && pythonCode && !recomputing) {
             e.preventDefault();
-            handleForceRecompute();
+            handleForceRecomputeRef.current();
           }
           break;
         case 'e': case 'E':
@@ -576,7 +578,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
     };
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [scriptId, pythonCode, recomputing, meshUrl, modelHistory, handleGenerate, handleForceRecompute, popSnapshot, setShowOnboarding]);
+  }, [scriptId, pythonCode, recomputing, meshUrl, modelHistory, popSnapshot, setShowOnboarding]);
 
   return (
     <div className={`app-shell${sidebarOpen ? '' : ' sidebar-collapsed'}`}>
@@ -1228,6 +1230,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
         scriptId={scriptId}
+        generationId={generationId}
         partName={partName}
         meshUrl={meshUrl ? fileUrl(meshUrl) : null}
         stepUrl={stepUrl ? fileUrl(stepUrl) : null}

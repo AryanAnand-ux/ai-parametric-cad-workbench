@@ -16,7 +16,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -24,7 +24,7 @@ from config import MODELS_DIR
 from database import get_db
 from models.user import User
 from models.project import Project, Generation, Version
-from services.auth_service import get_current_user
+from services.auth_service import get_current_user, get_optional_user
 
 logger = logging.getLogger("cad_workbench.projects")
 
@@ -224,7 +224,7 @@ async def delete_project(
 @router.get("/generations/{generation_id}")
 async def get_generation(
     generation_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
     page: int = Query(1, ge=1, description="Version history page (1-indexed)"),
     per_page: int = Query(200, ge=1, le=500, description="Versions per page"),
@@ -233,11 +233,30 @@ async def get_generation(
     result = await db.execute(
         select(Generation)
         .options(selectinload(Generation.versions))
-        .where(Generation.id == generation_id, Generation.user_id == current_user.id)
+        .where(
+            or_(
+                Generation.id == generation_id,
+                Generation.script_id == generation_id,
+            )
+        )
     )
     gen = result.scalar_one_or_none()
     if not gen:
         raise HTTPException(status_code=404, detail="Generation not found.")
+
+    is_public = bool(getattr(gen, "is_public", False))
+    is_owner = bool(current_user and gen.user_id == current_user.id)
+    if not (is_public or is_owner):
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required to view this private design.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. This model is private.",
+        )
 
     def _safe_json(text):
         if not text:

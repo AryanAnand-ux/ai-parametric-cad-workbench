@@ -64,10 +64,25 @@ export default function OnboardingTour({ isOpen, onClose }) {
   const containerRef = useRef(null);
   useFocusTrap(containerRef, isOpen);
 
-  const handleDismiss = () => {
+  const handleDismiss = useCallback(() => {
     localStorage.setItem('cad_tour_completed', '1');
     onClose();
-  };
+  }, [onClose]);
+
+  const handleNext = useCallback(() => {
+    if (currentStep < TOUR_STEPS.length - 1) {
+      setCurrentStep((s) => s + 1);
+    } else {
+      localStorage.setItem('cad_tour_completed', '1');
+      onClose();
+    }
+  }, [currentStep, onClose]);
+
+  const handlePrev = useCallback(() => {
+    if (currentStep > 0) {
+      setCurrentStep((s) => s - 1);
+    }
+  }, [currentStep]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -78,27 +93,11 @@ export default function OnboardingTour({ isOpen, onClose }) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, currentStep]);
+  }, [isOpen, handleDismiss, handleNext, handlePrev]);
 
   if (!isOpen) return null;
 
   const step = TOUR_STEPS[currentStep];
-
-  const handleNext = () => {
-    if (currentStep < TOUR_STEPS.length - 1) {
-      setCurrentStep((s) => s + 1);
-    } else {
-      // Mark tour as completed so it doesn't auto-show next session
-      localStorage.setItem('cad_tour_completed', '1');
-      onClose();
-    }
-  };
-
-  const handlePrev = () => {
-    if (currentStep > 0) {
-      setCurrentStep((s) => s - 1);
-    }
-  };
 
   return (
     <div className="modal-backdrop" onClick={handleDismiss}>

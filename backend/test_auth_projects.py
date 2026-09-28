@@ -137,3 +137,88 @@ def test_project_workspace_crud_and_isolation():
     # User A lists again -> project gone
     list_a_after = client.get("/api/projects", headers={"Authorization": f"Bearer {token_a}"}).json()
     assert not any(p["id"] == proj_a_id for p in list_a_after["projects"])
+
+
+def test_generation_detail_public_and_isolation():
+    from database import async_session_maker
+    from models.project import Project, Generation
+
+    # 1. Register owner and guest
+    owner_email = f"gen_owner_{uuid.uuid4().hex[:8]}@cad.ai"
+    guest_email = f"gen_guest_{uuid.uuid4().hex[:8]}@cad.ai"
+    owner_token = client.post("/api/auth/register", json={
+        "email": owner_email, "password": "Password123!", "display_name": "Owner"
+    }).json()["access_token"]
+    guest_token = client.post("/api/auth/register", json={
+        "email": guest_email, "password": "Password123!", "display_name": "Guest"
+    }).json()["access_token"]
+
+    priv_script_id = f"priv_gen_{uuid.uuid4().hex[:8]}"
+    pub_script_id = f"pub_gen_{uuid.uuid4().hex[:8]}"
+    priv_gen_id = None
+    pub_gen_id = None
+
+    async def _setup():
+        from models.user import User
+        from sqlalchemy import select
+        async with async_session_maker() as session:
+            res = await session.execute(select(User).where(User.email == owner_email))
+            owner = res.scalar_one()
+            proj = Project(user_id=owner.id, name="Test WS")
+            session.add(proj)
+            await session.flush()
+
+            priv_g = Generation(
+                user_id=owner.id, project_id=proj.id,
+                prompt="private gear", script_id=priv_script_id,
+                part_name="Private Gear", python_code="PARAMS = {}",
+                is_public=False
+            )
+            pub_g = Generation(
+                user_id=owner.id, project_id=proj.id,
+                prompt="public bolt", script_id=pub_script_id,
+                part_name="Public Bolt", python_code="PARAMS = {}",
+                is_public=True
+            )
+            session.add(priv_g)
+            session.add(pub_g)
+            await session.commit()
+            return priv_g.id, pub_g.id
+
+    priv_gen_id, pub_gen_id = asyncio.run(_setup())
+
+    # A. Public generation: accessible anonymously and by any user
+    anon_pub = client.get(f"/api/generations/{pub_gen_id}")
+    assert anon_pub.status_code == 200
+    assert anon_pub.json()["generation"]["part_name"] == "Public Bolt"
+
+    # Also lookup public generation by script_id
+    anon_pub_script = client.get(f"/api/generations/{pub_script_id}")
+    assert anon_pub_script.status_code == 200
+
+    # B. Private generation: anonymous access returns 401
+    anon_priv = client.get(f"/api/generations/{priv_gen_id}")
+    assert anon_priv.status_code == 401
+
+    # C. Private generation: other user returns 403
+    other_priv = client.get(
+        f"/api/generations/{priv_gen_id}",
+        headers={"Authorization": f"Bearer {guest_token}"}
+    )
+    assert other_priv.status_code == 403
+
+    # D. Private generation: owner returns 200
+    owner_priv = client.get(
+        f"/api/generations/{priv_gen_id}",
+        headers={"Authorization": f"Bearer {owner_token}"}
+    )
+    assert owner_priv.status_code == 200
+    assert owner_priv.json()["generation"]["part_name"] == "Private Gear"
+
+    # Also lookup private generation by script_id with owner token
+    owner_priv_script = client.get(
+        f"/api/generations/{priv_script_id}",
+        headers={"Authorization": f"Bearer {owner_token}"}
+    )
+    assert owner_priv_script.status_code == 200
+
