@@ -49,6 +49,7 @@ docker-compose up --build
 
 | File | Purpose |
 |------|---------|
+| [CODEBASE_GUIDE.md](./CODEBASE_GUIDE.md) | Comprehensive file-by-file technical guide & system walkthrough |
 | [prd.md](./prd.md) | Product requirements — what & why |
 | [architecture.md](./architecture.md) | System design — how it's built |
 | [design.md](./design.md) | UI/UX design system |
