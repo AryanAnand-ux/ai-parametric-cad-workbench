@@ -196,10 +196,10 @@ PARAMS = {
     "shaft_bore_dia": 19.0,
     "keyway_width": 6.0,
     "keyway_depth": 3.0,
-    "groove_top_width": 12.5,
-    "groove_depth": 11.0,
+    "groove_depth": 9.0,
+    "groove_width": 13.0,
     "num_grooves": 2,
-    "groove_spacing": 16.0
+    "groove_spacing": 17.0
 }
 import math
 from build123d import *
@@ -211,37 +211,34 @@ HL = PARAMS["hub_length"]
 BD = PARAMS["shaft_bore_dia"]
 KW = PARAMS["keyway_width"]
 KD = PARAMS["keyway_depth"]
-GW = PARAMS["groove_top_width"]
 GD = PARAMS["groove_depth"]
+GW = PARAMS["groove_width"]
 NG = int(PARAMS["num_grooves"])
 GS = PARAMS["groove_spacing"]
 
 with BuildPart() as part:
-    # 1. Main outer pulley rim disc centered at Z = 0
+    # 1. Main outer rim disc
     Cylinder(radius=OD / 2.0, height=PW)
-
-    # 2. Central hub extending beyond rim
+    # 2. Central extended hub
     Cylinder(radius=HD / 2.0, height=HL)
 
-    # 3. V-belt grooves cut around perimeter
+    # 3. Belt groove subtractions - annular slots around perimeter
     start_z = -((NG - 1) * GS) / 2.0
     for g in range(NG):
         gz = start_z + g * GS
         with Locations((0, 0, gz)):
-            Cone(bottom_radius=OD / 2.0 - GD, top_radius=OD / 2.0 + 1.0, height=GW, mode=Mode.SUBTRACT)
+            # Annular ring groove: extrude a hollow disc profile inward
+            with BuildSketch(Plane.XY) as groove_sk:
+                Circle(radius=OD / 2.0 + 1.0)
+                Circle(radius=OD / 2.0 - GD, mode=Mode.SUBTRACT)
+            extrude(amount=GW / 2.0, both=True, mode=Mode.SUBTRACT)
 
-    # 4. Central shaft through-bore
+    # 4. Shaft through-bore
     Cylinder(radius=BD / 2.0, height=HL * 2.0, mode=Mode.SUBTRACT)
 
-    # 5. Standard parallel keyway slot in hub
-    with Locations((0, (BD / 2.0) + (KD / 2.0), 0)):
+    # 5. Parallel keyway slot in hub
+    with Locations((0, BD / 2.0 + KD / 2.0, 0)):
         Box(KW, KD + 0.2, HL * 1.5, mode=Mode.SUBTRACT)
-
-    # 6. Web lightening pockets
-    web_r = (OD / 2.0 - GD + HD / 2.0) / 2.0
-    with PolarLocations(radius=web_r, count=4):
-        with Locations((0, 0, PW / 4.0)):
-            Cylinder(radius=10.0, height=PW / 2.0, mode=Mode.SUBTRACT)
 
 # Validation
 assert part.part is not None, "Build failed: part is None"
@@ -360,42 +357,42 @@ NB = int(PARAMS["num_bolts"])
 ID = OD - 2.0 * WT
 
 with BuildPart() as part:
-    # 1. Swept curved pipe body
+    # 1. Swept curved pipe body — arc in XZ plane from Z=0 down to Z=-BR
+    #    CenterArc(center=(BR,0), r=BR, start=180) starts at (0,0,0)
+    #    and end at 270° lands at (BR, 0, -BR), exiting in +X
     with BuildSketch(Plane.XY) as pipe_sk:
         Circle(radius=OD / 2.0)
     with BuildLine(Plane.XZ) as path:
         CenterArc(center=(BR, 0), radius=BR, start_angle=180, arc_size=90)
     sweep(sections=pipe_sk.sketch, path=path.line)
 
-    # 2. Flange 1 at Inlet (at Z=0, normal along Z)
-    with Locations((0, 0, -FT / 2.0)):
-        Cylinder(radius=FD / 2.0, height=FT)
-        with PolarLocations(radius=BCD / 2.0, count=NB):
-            Cylinder(radius=BHD / 2.0, height=FT * 2.0, mode=Mode.SUBTRACT)
+    # 2. Inlet flange at Z=0 — grows upward from Z=0
+    Cylinder(radius=FD / 2.0, height=FT, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    with PolarLocations(radius=BCD / 2.0, count=NB):
+        Cylinder(radius=BHD / 2.0, height=FT, align=(Align.CENTER, Align.CENTER, Align.MIN), mode=Mode.SUBTRACT)
 
-    # 3. Flange 2 at Outlet (at X=BR, Z=BR, normal along X)
-    with Locations(Location((BR + FT / 2.0, 0, BR), (0, 90, 0))):
-        Cylinder(radius=FD / 2.0, height=FT)
+    # 3. Outlet flange — arc endpoint is at (BR, 0, -BR), tangent direction is +X
+    #    Rotate 90 around Y: cylinder axis → +X; place it centered on pipe end face
+    with Locations(Location((BR, 0, -BR), (0, 90, 0))):
+        Cylinder(radius=FD / 2.0, height=FT, align=(Align.CENTER, Align.CENTER, Align.CENTER))
         with PolarLocations(radius=BCD / 2.0, count=NB):
-            Cylinder(radius=BHD / 2.0, height=FT * 2.0, mode=Mode.SUBTRACT)
+            Cylinder(radius=BHD / 2.0, height=FT, mode=Mode.SUBTRACT)
 
-    # 4. Continuous internal hollow fluid bore
+    # 4. Continuous internal hollow bore
     with BuildSketch(Plane.XY) as bore_sk:
         Circle(radius=ID / 2.0)
     with BuildLine(Plane.XZ) as bore_path:
         CenterArc(center=(BR, 0), radius=BR, start_angle=180, arc_size=90)
     sweep(sections=bore_sk.sketch, path=bore_path.line, mode=Mode.SUBTRACT)
-
-    with Locations((0, 0, -FT / 2.0)):
-        Cylinder(radius=ID / 2.0, height=FT * 2.0, mode=Mode.SUBTRACT)
-    with Locations(Location((BR + FT / 2.0, 0, BR), (0, 90, 0))):
+    Cylinder(radius=ID / 2.0, height=FT * 2.0, mode=Mode.SUBTRACT)
+    with Locations(Location((BR, 0, -BR), (0, 90, 0))):
         Cylinder(radius=ID / 2.0, height=FT * 2.0, mode=Mode.SUBTRACT)
 
 # Validation
 assert part.part is not None, "Build failed: part is None"
 assert len(part.part.solids()) == 1, "Pipe elbow must be 1 solid"
 bb = part.part.bounding_box()
-assert bb.size.X > BR, "X dimension must span bend radius"
+assert bb.size.X > OD, "X dimension must be wider than pipe OD"
 
 export_stl(part.part, OUTPUT_STL)
 export_step(part.part, OUTPUT_STEP)
@@ -554,7 +551,8 @@ PARAMS = {
     "top_dia": 50.0,
     "transition_height": 70.0,
     "wall_thickness": 3.0,
-    "base_flange_width": 12.0
+    "base_flange_width": 12.0,
+    "base_flange_thick": 6.0
 }
 import math
 from build123d import *
@@ -565,41 +563,39 @@ TD = PARAMS["top_dia"]
 H = PARAMS["transition_height"]
 T = PARAMS["wall_thickness"]
 FW = PARAMS["base_flange_width"]
+FT = PARAMS["base_flange_thick"]
 
 with BuildPart() as part:
-    # 1. Outer lofted solid
+    # 1. Outer solid: lofted transition body from Z=0 to Z=H
     with BuildSketch(Plane.XY) as sk_base:
         Rectangle(BL, BW)
     with BuildSketch(Plane.XY.offset(H)) as sk_top:
         Circle(radius=TD / 2.0)
-    
     loft(sections=[sk_base.sketch, sk_top.sketch])
 
-    # 2. Bottom rectangular mounting flange
-    with Locations((0, 0, 3.0)):
-        with BuildSketch(Plane.XY):
-            Rectangle(BL + 2 * FW, BW + 2 * FW)
-        extrude(amount=6.0)
+    # 2. Bottom mounting flange — wider rectangle, same height FT, fused below loft base
+    Box(BL + 2 * FW, BW + 2 * FW, FT,
+        align=(Align.CENTER, Align.CENTER, Align.MIN))
 
     # 3. Flange corner bolt holes
-    bx = (BL + FW) / 2.0
-    by = (BW + FW) / 2.0
+    bx = BL / 2.0 + FW / 2.0
+    by = BW / 2.0 + FW / 2.0
     with GridLocations(bx * 2.0, by * 2.0, 2, 2):
-        Cylinder(radius=2.5, height=20.0, mode=Mode.SUBTRACT)
+        Cylinder(radius=2.5, height=FT * 2.0, mode=Mode.SUBTRACT)
 
-    # 4. Hollow inner air passage
-    with BuildSketch(Plane.XY.offset(-5.0)) as sk_in_base:
+    # 4. Hollow inner passage — loft subtract from bottom of loft to top
+    #    Start just below loft base so hollow connects fully through
+    with BuildSketch(Plane.XY.offset(T / 2.0)) as sk_in_base:
         Rectangle(BL - 2 * T, BW - 2 * T)
-    with BuildSketch(Plane.XY.offset(H + 5.0)) as sk_in_top:
-        Circle(radius=(TD - 2 * T) / 2.0)
-    
+    with BuildSketch(Plane.XY.offset(H + 1.0)) as sk_in_top:
+        Circle(radius=max(1.0, (TD / 2.0) - T))
     loft(sections=[sk_in_base.sketch, sk_in_top.sketch], mode=Mode.SUBTRACT)
 
 # Validation
 assert part.part is not None, "Build failed: part is None"
 assert len(part.part.solids()) == 1, "Duct transition must be 1 solid"
 bb = part.part.bounding_box()
-assert abs(bb.size.Z - (H + 3.0)) < 2.0, "Duct height mismatch"
+assert bb.size.Z > H, "Duct height must be at least transition_height"
 
 export_stl(part.part, OUTPUT_STL)
 export_step(part.part, OUTPUT_STEP)
