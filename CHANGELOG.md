@@ -27,6 +27,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Round-5 dependencies** — actions v7, vite 8.3, three 0.186, fiber 9.8, react-dom, dotenv 1.2, shapely 2.1, trimesh 5.1, chromadb 1.5 (index compatible)
 - **Gallery handoff** — fork opens the forked 3D model directly (deep-link, cache override, geometry regen, obj/glb in detail)
 - **CI dependency gap** — `sqlalchemy[asyncio]` + explicit `greenlet` + `bcrypt` (fixed 8 consecutive CI collection failures); removed unused `sse-starlette`
+- **CAD Archetypes topology** — resolved non-manifold/multi-solid defects in V-Belt Pulley, Flanged Pipe Elbow, and HVAC Transition Duct in `examples_universal.py`, ensuring 100% single-solid B-Rep compilation
+- **Onboarding tour crash** — added missing `useCallback` import in `OnboardingTour.jsx` eliminating `ReferenceError: useCallback is not defined`
+- **Gallery seeding** — all 8 community models seeded with verified watertight STL meshes and parameters
 
 ### Planned
 - PostgreSQL migration (replace SQLite for production)

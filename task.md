@@ -9,9 +9,9 @@
 
 ---
 
-## In Progress
+### In Progress
 
-- [ ] Production deployment readiness & final polish
+- [x] Production deployment readiness & final polish
 
 ---
 
@@ -40,7 +40,7 @@
 - [ ] Dark mode toggle (CSS custom property swap)
 - [ ] Code inspector: syntax highlighting for generated Python (Prism.js or similar)
 - [ ] Export: add batch export (download all formats as ZIP)
-- [ ] Gallery: add pagination / infinite scroll
+- [x] Gallery: add pagination / infinite scroll
 - [ ] Projects sidebar: drag-to-reorder projects
 - [x] Add `CHANGELOG.md` to track version history
 
@@ -52,8 +52,8 @@
 - [ ] Split-view: prompt history timeline on the left
 - [ ] 3D viewer: measurement tool (distance between two points)
 - [ ] 3D viewer: section cut plane tool
-- [ ] Add build123d tutorial/docs link in onboarding tour
-- [ ] Telemetry HUD: add polygon count, material info
+- [x] Add build123d tutorial/docs link in onboarding tour
+- [x] Telemetry HUD: add polygon count, material info
 
 ---
 
@@ -90,14 +90,14 @@
 - [x] Round-4 stack — PyJWT swap (jose removed), Postgres-ready compose, Dockerfile 3.11, tour docs link, telemetry face chip, merged vite + plugin-react bumps
 - [x] Round-5 dependency wave — merged actions/checkout+setup-node+setup-python v7, vite, plugin-react, three, fiber, react-dom; applied dotenv/shapely/trimesh-5/chromadb-1.5 manually (RAG verified on chroma 1.x), closed superseded PRs
 - [x] Gallery→workspace handoff — fork banner deep-links `#model=<fork_id>`, deep links override cached models, fork regenerates missing geometry + self-contained artifacts, detail endpoint serves obj/glb URLs
-- [x] Round-3 product + a11y — daily quotas (50/day free), per-user rate keys, batch ZIP export, focus-trap system, gallery load-more, export-all button, dev-only logger, slider drafts, Dependabot
-
+- [x] Archetype geometry verification — robust single-solid build123d topology for V-Belt Pulley, Flanged Pipe Elbow, HVAC Transition Duct; all 8 community gallery models seeded and verified
+- [x] Frontend runtime fix — added missing `useCallback` import in `OnboardingTour.jsx` preventing component crash on first visit
 
 ---
 
 ## Notes
 
-- Backend test suite: `cd backend && python -m pytest -v` (79 tests, ~100s)
+- Backend test suite: `cd backend && python -m pytest -v` (80 tests, ~98s)
 - Frontend dev server: `cd frontend && npm run dev` (Vite, port 5173)
 - Backend dev server: `cd backend && uvicorn main:app --reload --port 8000`
 - RAG index rebuild: `python -c "from services.rag_service import RAGService; RAGService.build_index()"`
