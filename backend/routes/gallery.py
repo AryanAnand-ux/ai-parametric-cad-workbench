@@ -13,18 +13,22 @@ Routes:
 
 import json
 import re
+import shutil
 import uuid
 import logging
+from pathlib import Path
 from typing import Optional, List, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy import select, desc, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import MODELS_DIR
 from database import get_db
 from models.project import Generation, Project
 from models.user import User
 from services.auth_service import get_current_user, get_optional_user
+from services.cad_runner import CADRunner
 
 logger = logging.getLogger("cad_workbench.gallery")
 
@@ -333,6 +337,48 @@ async def fork_design(
 
     # Create forked generation record (new id, new script_id suffix)
     forked_script_id = f"{original.script_id}_fork_{str(uuid.uuid4())[:6]}"
+    # Copy artifact files so the fork is self-contained (originals may be
+    # cleaned up by TTL) and the 3D model displays immediately in the workspace.
+    fork_urls: dict[str, str | None] = {"mesh_url": None, "step_url": None}
+    for ext, key in (("stl", "mesh_url"), ("step", "step_url")):
+        src = Path(MODELS_DIR) / f"{original.script_id}.{ext}"
+        if src.exists():
+            try:
+                shutil.copy2(src, Path(MODELS_DIR) / f"{forked_script_id}.{ext}")
+                fork_urls[key] = f"/static/models/{forked_script_id}.{ext}"
+            except OSError as e:
+                logger.warning(f"[Gallery] Could not copy {ext} for fork: {e}")
+    for ext in ("obj", "glb"):
+        src = Path(MODELS_DIR) / f"{original.script_id}.{ext}"
+        if src.exists():
+            try:
+                shutil.copy2(src, Path(MODELS_DIR) / f"{forked_script_id}.{ext}")
+            except OSError as e:
+                logger.warning(f"[Gallery] Could not copy {ext} for fork: {e}")
+    # If no artifact files survived (TTL cleanup / reseeded DB), regenerate
+    # geometry from the copied script so the forked model displays at once.
+    regen_urls: dict[str, str | None] = {"mesh_url": None, "step_url": None}
+    regen_mesh_info: dict | None = None
+    if fork_urls["mesh_url"] is None and original.python_code:
+        try:
+            param_list = json.loads(original.parameters_json) if original.parameters_json else []
+            defaults = {
+                p["name"]: p.get("default") for p in param_list
+                if isinstance(p, dict) and "name" in p
+            }
+            result = await CADRunner.execute_script_async(
+                script_id=forked_script_id,
+                python_code=original.python_code,
+                parameters=defaults,
+                design_mode=original.design_mode or "single_solid",
+                fast_preview=True,
+            )
+            if result.get("status") == "success":
+                regen_urls["mesh_url"] = result.get("mesh_url")
+                regen_urls["step_url"] = result.get("step_url")
+                regen_mesh_info = result.get("mesh_info") or {}
+        except Exception as e:
+            logger.warning(f"[Gallery] Fork geometry regen failed for {generation_id}: {e}")
     fork = Generation(
         project_id=project.id,
         user_id=current_user.id,
@@ -342,9 +388,9 @@ async def fork_design(
         description=original.description,
         python_code=original.python_code,
         parameters_json=original.parameters_json,
-        mesh_info_json=original.mesh_info_json,
-        mesh_url=original.mesh_url,
-        step_url=original.step_url,
+        mesh_info_json=json.dumps(regen_mesh_info) if regen_mesh_info else original.mesh_info_json,
+        mesh_url=regen_urls["mesh_url"] or fork_urls["mesh_url"] or original.mesh_url,
+        step_url=regen_urls["step_url"] or fork_urls["step_url"] or original.step_url,
         model_used=original.model_used,
         design_mode=original.design_mode,
         components_json=original.components_json,

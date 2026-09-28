@@ -25,6 +25,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Round-3 features** — daily quotas (50/day free tier), per-user rate keys, batch ZIP export-all, focus-trap system, gallery load-more, dev-only logger, slider draft typing, Dependabot
 - **Round-4 stack** — PyJWT (jose removed), Postgres-ready compose, tour docs link, telemetry face chip
 - **Round-5 dependencies** — actions v7, vite 8.3, three 0.186, fiber 9.8, react-dom, dotenv 1.2, shapely 2.1, trimesh 5.1, chromadb 1.5 (index compatible)
+- **Gallery handoff** — fork opens the forked 3D model directly (deep-link, cache override, geometry regen, obj/glb in detail)
 - **CI dependency gap** — `sqlalchemy[asyncio]` + explicit `greenlet` + `bcrypt` (fixed 8 consecutive CI collection failures); removed unused `sse-starlette`
 
 ### Planned

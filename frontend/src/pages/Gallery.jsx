@@ -244,6 +244,7 @@ export default function Gallery({ onGoToApp }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [forkMessage, setForkMessage] = useState(null);
+  const [forkId, setForkId] = useState(null);
   const forkTimerRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -290,9 +291,16 @@ export default function Gallery({ onGoToApp }) {
   };
 
   const handleFork = (res) => {
-    setForkMessage(`✓ Forked as "${res.part_name}" — open Workspaces to edit it.`);
+    setForkMessage(`✓ Forked as "${res.part_name}" — opening it in your workspace…`);
+    setForkId(res.fork_id || res.id || null);
     if (forkTimerRef.current) clearTimeout(forkTimerRef.current);
-    forkTimerRef.current = setTimeout(() => setForkMessage(null), 5000);
+    forkTimerRef.current = setTimeout(() => { setForkMessage(null); setForkId(null); }, 8000);
+  };
+
+  const openForkedModel = () => {
+    if (forkTimerRef.current) clearTimeout(forkTimerRef.current);
+    // Deep-link the forked generation so the workbench loads its 3D model directly.
+    window.location.hash = forkId ? `#model=${encodeURIComponent(forkId)}` : '#app';
   };
 
   useEffect(() => () => {
@@ -388,7 +396,7 @@ export default function Gallery({ onGoToApp }) {
         }}>
           <span>{forkMessage}</span>
           <button
-            onClick={onGoToApp}
+            onClick={openForkedModel}
             style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '5px', color: '#fff', padding: '4px 12px', cursor: 'pointer', fontWeight: 700, fontSize: '12px' }}
           >
             Open Workbench

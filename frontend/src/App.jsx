@@ -348,14 +348,16 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
     }
   }, [applyPartResponse, setError, setLoading, setShowProjectSidebar, updateStream]);
 
-  // Deep-link support: load a shared model (#model=<id> / #embed=<id>) on mount
-  const shareLinkAppliedRef = useRef(false);
+  // Deep-link support: load a shared/forked model (#model=<id> / #embed=<id>).
+  // A deep link always wins over any cached workspace model, and each new
+  // id is applied (navigating from one shared model to another reloads).
+  const appliedShareIdRef = useRef(null);
   useEffect(() => {
-    if (!initialGenerationId || shareLinkAppliedRef.current) return;
-    if (generationId || scriptId) return;
-    shareLinkAppliedRef.current = true;
+    if (!initialGenerationId) return;
+    if (appliedShareIdRef.current === initialGenerationId) return;
+    appliedShareIdRef.current = initialGenerationId;
     handleSelectGeneration(initialGenerationId);
-  }, [initialGenerationId, generationId, scriptId, handleSelectGeneration]);
+  }, [initialGenerationId, handleSelectGeneration]);
 
   // Publish active design to public community gallery
   const handlePublishToGallery = async () => {

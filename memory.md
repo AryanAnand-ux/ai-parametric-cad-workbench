@@ -295,6 +295,9 @@ Backend: daily quota 50/day free (`check_and_bump_quota`, `test_quota.py` 10 tes
 ### Round 5 (same day) — dependency wave
 Merged: actions/checkout+setup-node+setup-python v7, vite 8.3.1, plugin-react 6.1.1, three 0.186.1, fiber 9.8.0, react-dom bump. Applied manually + verified locally: dotenv 1.2.3, shapely 2.1.2, trimesh 5.1.0, chromadb 1.5.9 (old 0.5-persisted index reads fine on 1.x; RAG tests green). Closed superseded PRs. Suite 79/79, Vite build clean.
 
+### Gallery handoff fix (same day)
+Symptom: fork → "Open Workbench" showed stale/empty workspace, never the forked 3D model. Three causes, all fixed: (1) banner navigated to bare `#app` — now deep-links `#model=<fork_id>`; (2) deep-link effect skipped whenever ANY cached model existed — now per-ID applied ref, deep link always wins; (3) forked records pointed at original artifact files (often TTL-cleaned) — fork now copies artifacts and regenerates geometry from script when files are missing (E2E-verified: fork .stl on disk + obj/glb resolved). Detail endpoint also gained obj_url/glb_url so export menu survives loading saved models.
+
 ### Round 4 (same day)
 Backend: `python-jose` → PyJWT (`InvalidTokenError as JWTError`, incl. telemetry unverified-decode path), `asyncpg` driver added, compose gains `postgres:16` service (SQLite default unchanged), Dockerfile 3.11 to match CI. Closed obsolete jose-bump PR; merged vite 8.3.1 + plugin-react 6.1.1 (both green). Frontend: tour resources step (build123d docs), face-count chip, VITE_API_URL comment, gallery date fallback, hero CLS dims. Suite 79/79, build + lint clean.
 

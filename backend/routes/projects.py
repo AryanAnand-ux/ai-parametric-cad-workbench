@@ -11,6 +11,7 @@ GET    /api/generations/{gen_id}              — Get generation details
 
 import json
 import logging
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -19,6 +20,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from config import MODELS_DIR
 from database import get_db
 from models.user import User
 from models.project import Project, Generation, Version
@@ -69,6 +71,8 @@ class GenerationDetail(BaseModel):
     mesh_info: dict | None
     mesh_url: str | None
     step_url: str | None
+    obj_url: str | None = None
+    glb_url: str | None = None
     model_used: str | None
     generation_time_ms: int | None
     self_corrections: int
@@ -76,6 +80,15 @@ class GenerationDetail(BaseModel):
     components: list | None
     versions: list
     created_at: str
+
+
+def _artifact_url(script_id: str, ext: str) -> str | None:
+    """Derive a download URL for a generated artifact if the file exists on disk."""
+    if not script_id:
+        return None
+    if (Path(MODELS_DIR) / f"{script_id}.{ext}").exists():
+        return f"/static/models/{script_id}.{ext}"
+    return None
 
 
 # ─── Project CRUD ───────────────────────────────────────────────────────────
@@ -255,6 +268,8 @@ async def get_generation(
             mesh_info=_safe_json(gen.mesh_info_json),
             mesh_url=gen.mesh_url,
             step_url=gen.step_url,
+            obj_url=_artifact_url(gen.script_id, "obj"),
+            glb_url=_artifact_url(gen.script_id, "glb"),
             model_used=gen.model_used,
             generation_time_ms=gen.generation_time_ms,
             self_corrections=gen.self_corrections,
