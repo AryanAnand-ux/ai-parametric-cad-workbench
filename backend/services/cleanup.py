@@ -29,6 +29,9 @@ class ArtifactCleanupManager:
             for file_path in directory.rglob("*"):
                 if not file_path.is_file():
                     continue
+                # Never delete permanent showcase seed models
+                if file_path.name.startswith("seed_"):
+                    continue
                 # Guard stat: file may vanish between rglob and stat (races with writers)
                 try:
                     file_age = now - file_path.stat().st_mtime

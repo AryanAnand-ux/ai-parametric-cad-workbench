@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import async_session_maker, create_tables
+from config import MODELS_DIR
 from models.user import User
 from models.project import Project, Generation
 from services.auth_service import hash_password
@@ -165,8 +166,10 @@ async def seed_gallery():
             existing = await db.execute(
                 select(Generation).where(Generation.script_id == script_id)
             )
-            if existing.scalar_one_or_none():
-                logger.info(f"Model {sample['name']} already exists in DB, skipping.")
+            existing_gen = existing.scalar_one_or_none()
+            stl_file = MODELS_DIR / f"{script_id}.stl"
+            if existing_gen and stl_file.is_file():
+                logger.info(f"Model {sample['name']} already exists and STL is present, skipping.")
                 continue
 
             logger.info(f"Compiling CAD geometry for {sample['name']}...")
@@ -181,6 +184,16 @@ async def seed_gallery():
                 continue
 
             params = extract_parameters(ex["code"])
+
+            if existing_gen:
+                existing_gen.mesh_url = exec_res.get("mesh_url")
+                existing_gen.step_url = exec_res.get("step_url")
+                existing_gen.mesh_info_json = json.dumps(exec_res.get("mesh_info", {}))
+                existing_gen.python_code = ex["code"]
+                existing_gen.parameters_json = json.dumps(params)
+                seeded_count += 1
+                logger.info(f"Re-generated mesh for existing model: {sample['name']}")
+                continue
 
             gen = Generation(
                 user_id=author.id,

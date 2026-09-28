@@ -266,6 +266,27 @@ async def get_generation(
         except Exception:
             return None
 
+    # Ensure physical mesh file exists on disk; if missing, re-generate on-demand
+    stl_path = MODELS_DIR / f"{gen.script_id}.stl"
+    if gen.python_code and not stl_path.exists():
+        try:
+            from services.cad_runner import CADRunner
+            exec_res = await CADRunner.execute_script_async(
+                script_id=gen.script_id,
+                python_code=gen.python_code,
+                design_mode=gen.design_mode or "single_solid",
+            )
+            if exec_res.get("status") == "success":
+                if exec_res.get("mesh_url"):
+                    gen.mesh_url = exec_res["mesh_url"]
+                if exec_res.get("step_url"):
+                    gen.step_url = exec_res["step_url"]
+                if exec_res.get("mesh_info"):
+                    gen.mesh_info_json = json.dumps(exec_res["mesh_info"])
+                await db.commit()
+        except Exception as e:
+            logger.warning(f"On-demand mesh regeneration failed for {gen.script_id}: {e}")
+
     all_versions = list(gen.versions)
     total_versions = len(all_versions)
     start = (page - 1) * per_page

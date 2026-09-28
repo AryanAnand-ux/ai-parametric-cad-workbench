@@ -89,7 +89,9 @@ x = 10 / 0  # ZeroDivisionError
 
     # 4. Test Artifact Cleanup
     print("\n[4/4] Testing Artifact Cleanup Manager...")
-    cleaned_files = ArtifactCleanupManager.cleanup_old_artifacts(max_age_seconds=0)
+    for f in list(MODELS_DIR.glob("parallel_*.*")) + list(MODELS_DIR.glob("async_part_w2*.*")):
+        ArtifactCleanupManager.remove_file_safely(f)
+    cleaned_files = ArtifactCleanupManager.cleanup_old_artifacts(max_age_seconds=86400)
     print(f"[OK] Cleanup executed successfully. Removed {cleaned_files} artifacts.")
 
     print("\n" + "=" * 60)

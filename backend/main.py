@@ -321,9 +321,45 @@ def require_artifact_access(filename: str, provided_token: str | None) -> Path:
 
 
 @app.get("/static/models/{filename:path}")
-async def serve_model_artifact(filename: str, x_admin_token: str | None = Header(default=None)):
+async def serve_model_artifact(
+    filename: str,
+    x_admin_token: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
     """Serve preview/download artifacts without exposing source code publicly."""
-    return FileResponse(path=str(require_artifact_access(filename, x_admin_token)))
+    path = Path(filename)
+    if path.name != filename or path.suffix.lower() not in {".stl", ".step", ".obj", ".glb", ".py"}:
+        raise HTTPException(status_code=404, detail="Artifact not found.")
+    if not is_safe_script_id(path.stem):
+        raise HTTPException(status_code=404, detail="Artifact not found.")
+    if path.suffix.lower() == ".py":
+        require_admin_token(x_admin_token)
+
+    artifact_path = MODELS_DIR / filename
+    if not artifact_path.is_file():
+        # Attempt on-demand regeneration if the generation exists in database
+        try:
+            from models.project import Generation
+            res = await db.execute(select(Generation).where(Generation.script_id == path.stem))
+            gen = res.scalar_one_or_none()
+            if gen and gen.python_code:
+                exec_res = await CADRunner.execute_script_async(
+                    script_id=gen.script_id,
+                    python_code=gen.python_code,
+                    design_mode=gen.design_mode or "single_solid",
+                )
+                if exec_res.get("status") == "success":
+                    if exec_res.get("mesh_url"):
+                        gen.mesh_url = exec_res["mesh_url"]
+                    if exec_res.get("step_url"):
+                        gen.step_url = exec_res["step_url"]
+                    await db.commit()
+        except Exception as e:
+            logger.warning(f"On-demand artifact regeneration failed for {path.stem}: {e}")
+
+    if not artifact_path.is_file():
+        raise HTTPException(status_code=404, detail="Artifact not found.")
+    return FileResponse(path=str(artifact_path))
 
 
 # ---------------------------------------------------------------------------
