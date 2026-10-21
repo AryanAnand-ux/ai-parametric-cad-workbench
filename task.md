@@ -93,12 +93,13 @@
 - [x] Archetype geometry verification — robust single-solid build123d topology for V-Belt Pulley, Flanged Pipe Elbow, HVAC Transition Duct; all 8 community gallery models seeded and verified
 - [x] Frontend runtime fix — added missing `useCallback` import in `OnboardingTour.jsx` preventing component crash on first visit
 - [x] Doc consolidation — deleted `architecture.md` + `memory.md` as duplicates; doc set is now README, AGENTS, rules, CODEBASE_GUIDE, prd, design, task, CHANGELOG
+- [x] Sketch-to-CAD — `POST /api/generate/sketch` (multipart upload with optional user prompt), `VisionService` with Geometric Chain-of-Thought (Axis Mapping, Base Profile Type, Curve Rules, Feature Elevations), Pydantic `SketchVisionAnalysis` structured outputs, drag-drop upload zone + thumbnail preview in `PromptPanel` with attached prompt guidance, `generatePartFromSketch` in `api.js`, 8 tests in `test_sketch_endpoint.py` (88/88 test suite pass)
 
 ---
 
 ## Notes
 
-- Backend test suite: `cd backend && python -m pytest -v` (80 tests, ~98s)
+- Backend test suite: `cd backend && python -m pytest -v` (88 tests, ~85s)
 - Frontend dev server: `cd frontend && npm run dev` (Vite, port 5173)
 - Backend dev server: `cd backend && uvicorn main:app --reload --port 8000`
 - RAG index rebuild: `python -c "from services.rag_service import RAGService; RAGService.build_index()"`

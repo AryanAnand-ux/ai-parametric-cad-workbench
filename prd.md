@@ -83,6 +83,13 @@ An LLM-driven pipeline converts a natural language description into a parametric
 - `?` — Open the interactive Studio Onboarding Tour modal
 - `Z` — Undo to previous model topology snapshot
 
+### 3.9 Sketch-to-CAD (Multimodal Input)
+- Drag-and-drop or upload mechanical drawings or hand-drawn sketches (PNG, JPEG, WEBP up to 10 MB)
+- Optional natural language guidance from prompt box attached to upload for multi-view selection or dimensions
+- Gemini Vision parses image via Strict Geometric Chain-of-Thought (Axis Mapping, Base Profile Strategy, Curve Rules forbidding box-minus-box for arches, Feature Z-Elevations)
+- Pydantic structured output (`SketchVisionAnalysis`) enforces 100% valid JSON responses
+- Enriched topological specification feeds directly into build123d generation, RAG archetypes, and CADRunner sandbox with self-correction
+
 ---
 
 ## 4. Non-Functional Requirements
@@ -142,6 +149,7 @@ Landing Page
 |----------|--------|-------------|
 | `/api/generate` | POST | Generate new CAD model from prompt |
 | `/api/generate/stream` | POST (SSE) | Generate with staged progress events |
+| `/api/generate/sketch` | POST (multipart) | Generate new CAD model from sketch image + optional prompt |
 | `/api/recompute` | POST | Re-run script with updated parameters |
 | `/api/modify` | POST | Modify existing model via natural language |
 | `/api/health` | GET | Backend health + LLM provider status |

@@ -13,9 +13,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from collections import defaultdict
 from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Request, Depends, Response, Query
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Request, Depends, Response, Query, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
 try:
     from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
 except ImportError:  # older starlette without proxy_headers module
@@ -254,6 +256,23 @@ app.add_middleware(
 
 # Structured JSON request telemetry (must come after CORS)
 app.add_middleware(TelemetryMiddleware)
+
+
+@app.exception_handler(RequestValidationError)
+async def _log_request_validation_error(request: Request, exc: RequestValidationError):
+    """Log 422 validation failures with field-level reasons (response shape unchanged)."""
+    compact = []
+    for error in exc.errors():
+        ctx = error.get("ctx") or {}
+        ctx_error = ctx.get("error")
+        compact.append({
+            "loc": error.get("loc"),
+            "msg": error.get("msg"),
+            "type": error.get("type"),
+            "ctx": str(ctx_error)[:300] if ctx_error is not None else None,
+        })
+    logger.warning(f"[VALIDATION] 422 {request.url.path} errors={compact}")
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
 
 
 @app.middleware("http")
@@ -697,6 +716,246 @@ async def generate_part_stream(
         yield f"data: {json.dumps({'phase': 'complete', 'progress': 100, 'result': final_response})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+# ---------------------------------------------------------------------------
+# Sketch-to-CAD Endpoint  (POST /api/generate/sketch)
+# ---------------------------------------------------------------------------
+
+_ALLOWED_SKETCH_MIME = {"image/png", "image/jpeg", "image/webp"}
+_MAX_SKETCH_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+@app.post("/api/generate/sketch", response_model=GenerateResponse)
+async def generate_from_sketch(
+    background_tasks: BackgroundTasks,
+    request: Request,
+    response: Response,
+    image: UploadFile = File(..., description="PNG, JPEG, or WEBP sketch image (max 10 MB)"),
+    prompt: Optional[str] = Form(None, description="Optional natural language guidance or clarification"),
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Sketch-to-CAD pipeline — two-step vision + generate flow.
+
+    Step 1: Gemini Vision parses the uploaded sketch image and extracts:
+      - visual_interpretation (human-readable feature summary)
+      - identified_parameters (dimension dict in mm)
+      - geometric reasoning (axis mapping, base profile strategy, curve rules, elevations)
+      - derived_prompt (rich NL description for CAD generation)
+
+    Step 2: derived_prompt feeds into the existing LLM + CAD runner pipeline
+    (same multi-tier fallback, self-correction loop, DB persistence).
+
+    Returns an identical GenerateResponse shape to POST /api/generate.
+    Image bytes are processed in-memory; nothing is written to disk.
+    """
+    from services.vision_service import VisionService
+
+    if ENVIRONMENT == "production" and current_user is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Authentication required. Production compute requires login.",
+        )
+    if not GEMINI_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Sketch parsing requires GEMINI_API_KEY — not configured on this server.",
+        )
+
+    # Rate limit + quota shared with /api/generate
+    client_ip = request.client.host if request.client else "unknown"
+    remaining, reset_in = await generate_limiter.check(_rate_limit_key(current_user, client_ip))
+    if response:
+        response.headers["X-RateLimit-Limit"] = str(generate_limiter.rpm)
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        response.headers["X-RateLimit-Reset"] = str(reset_in)
+    if current_user is not None:
+        await check_and_bump_quota(current_user, db)
+
+    # Validate MIME type
+    mime_type = image.content_type or ""
+    if mime_type not in _ALLOWED_SKETCH_MIME:
+        raise HTTPException(
+            status_code=415,
+            detail=(
+                f"Unsupported image type '{mime_type}'. "
+                "Please upload a PNG, JPEG, or WEBP file."
+            ),
+        )
+
+    # Read image bytes — enforce max size (in-memory only, never written to disk)
+    image_bytes = await image.read()
+    if len(image_bytes) > _MAX_SKETCH_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Image too large. Maximum allowed size is 10 MB.",
+        )
+    if len(image_bytes) < 64:
+        raise HTTPException(status_code=400, detail="Image file appears to be empty or corrupt.")
+
+    # ── Step 1: Vision parse ──────────────────────────────────────────────
+    logger.info(
+        f"[SKETCH] Parsing sketch image ({len(image_bytes):,} bytes, {mime_type}, prompt={bool(prompt)})"
+    )
+    try:
+        parsed = await asyncio.to_thread(
+            VisionService.parse_sketch, image_bytes, mime_type, prompt
+        )
+    except Exception as vision_err:
+        logger.error(f"[SKETCH] Vision parse failed: {vision_err}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Sketch vision parsing failed: {vision_err}",
+        )
+
+    logger.info(
+        f"[SKETCH] Vision parsed OK | params={list(parsed.identified_parameters.keys())} | "
+        f"prompt='{parsed.derived_prompt[:80]}...'"
+    )
+
+    # ── Step 2: Feed derived_prompt into existing generate pipeline ───────
+    script_id = f"sketch_{uuid.uuid4().hex[:12]}"
+    self_correction_attempts = 0
+    model_used = "unknown"
+
+    try:
+        dual_output, model_used = await asyncio.to_thread(
+            LLMService.generate_dual_output, parsed.derived_prompt
+        )
+    except Exception as llm_err:
+        telemetry_metrics.record_generation(False, model_used)
+        raise HTTPException(
+            status_code=502,
+            detail=f"CAD code generation failed: {llm_err}",
+        )
+
+    logger.info(
+        f"[SKETCH] LLM generated '{dual_output.part_name}' | "
+        f"{len(dual_output.parameters)} params | model={model_used}"
+    )
+
+    current_code = dual_output.python_code
+    execution_result = None
+
+    for attempt in range(LLMService.MAX_RETRIES + 1):
+        execution_result = await CADRunner.execute_script_async(
+            script_id=script_id,
+            python_code=current_code,
+            design_mode=dual_output.design_mode,
+            component_names=dual_output.components,
+        )
+        is_geo_valid = execution_result.get("mesh_info", {}).get("is_valid", True)
+        if execution_result["status"] == "success" and is_geo_valid:
+            break
+        if attempt < LLMService.MAX_RETRIES:
+            self_correction_attempts += 1
+            if execution_result["status"] != "success":
+                traceback_text = execution_result.get("stderr", "Unknown execution error")
+            else:
+                warnings = execution_result.get("mesh_info", {}).get("geometry_warnings", [])
+                traceback_text = "GEOMETRY TOPOLOGY VALIDATION FAILURE:\n" + "\n".join(warnings)
+            logger.warning(
+                f"[SKETCH SELF-CORRECT] Attempt {self_correction_attempts}/{LLMService.MAX_RETRIES} "
+                f"| script_id={script_id} | reason={traceback_text[:100].strip()!r}"
+            )
+            try:
+                corrected, model_used = await asyncio.to_thread(
+                    LLMService.correct_code,
+                    user_prompt=parsed.derived_prompt,
+                    failed_code=current_code,
+                    error_traceback=traceback_text,
+                )
+                current_code = corrected.python_code
+                dual_output = corrected
+                logger.info(f"[SKETCH SELF-CORRECT] Corrected | model={model_used}")
+            except Exception as correction_err:
+                logger.error(f"[SKETCH SELF-CORRECT] Correction call failed: {correction_err}")
+                break
+
+    is_geo_valid = (
+        execution_result.get("mesh_info", {}).get("is_valid", True)
+        if execution_result
+        else False
+    )
+    if not execution_result or execution_result.get("status") != "success" or not is_geo_valid:
+        stderr_tail = scrub_fs_paths(
+            (execution_result.get("stderr", "") if execution_result else "")[-2000:]
+        )
+        telemetry_metrics.record_generation(False, model_used)
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "CAD script execution failed after all self-correction attempts.",
+                "script_id": script_id,
+                "visual_interpretation": parsed.visual_interpretation,
+                "self_correction_attempts": self_correction_attempts,
+                "error_code": (
+                    execution_result.get("error_type", "cad_execution_failed")
+                    if execution_result
+                    else "cad_execution_failed"
+                ),
+                "stderr_tail": stderr_tail,
+                "geometry_warnings": (
+                    execution_result.get("mesh_info", {}).get("geometry_warnings", [])
+                    if execution_result
+                    else []
+                ),
+            },
+        )
+
+    gen_id = None
+    if current_user and db:
+        try:
+            gen_record = await save_generation_record(
+                db=db,
+                user_id=current_user.id,
+                # Prefix prompt with [Sketch] so history is labelled clearly
+                prompt=f"[Sketch] {parsed.derived_prompt}",
+                script_id=script_id,
+                part_name=dual_output.part_name,
+                description=dual_output.description,
+                python_code=current_code,
+                parameters=(
+                    [p.model_dump() for p in dual_output.parameters]
+                    if dual_output.parameters
+                    else []
+                ),
+                mesh_info=execution_result.get("mesh_info"),
+                mesh_url=execution_result.get("mesh_url"),
+                step_url=execution_result.get("step_url"),
+                model_used=model_used,
+                generation_time_ms=execution_result.get("recomputation_time_ms"),
+                self_corrections=self_correction_attempts,
+                design_mode=dual_output.design_mode,
+                components=dual_output.components,
+            )
+            if gen_record:
+                gen_id = gen_record.id
+        except Exception as dbe:
+            logger.warning(f"[SKETCH DB] Failed to persist generation: {dbe}")
+
+    background_tasks.add_task(ArtifactCleanupManager.cleanup_old_artifacts, 86400)
+    telemetry_metrics.record_generation(True, model_used)
+
+    return GenerateResponse(
+        status="success",
+        generation_id=gen_id,
+        script_id=script_id,
+        part_name=dual_output.part_name,
+        description=dual_output.description,
+        python_code=current_code,
+        parameters=dual_output.parameters,
+        design_mode=dual_output.design_mode,
+        components=dual_output.components,
+        mesh_url=execution_result.get("mesh_url"),
+        step_url=execution_result.get("step_url"),
+        mesh_info=execution_result.get("mesh_info"),
+        recomputation_time_ms=execution_result.get("recomputation_time_ms"),
+        self_correction_attempts=self_correction_attempts,
+        model_used=model_used,
+    )
 
 
 # ---------------------------------------------------------------------------

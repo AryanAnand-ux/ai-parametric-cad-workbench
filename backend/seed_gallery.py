@@ -9,6 +9,7 @@ import ast
 import json
 import asyncio
 import logging
+import math
 import os
 import secrets
 from sqlalchemy import select
@@ -17,7 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import async_session_maker, create_tables
 from config import MODELS_DIR
 from models.user import User
-from models.project import Project, Generation
+from models.project import Project, Generation, Version
+from schemas import CADParameter
 from services.auth_service import hash_password
 from services.cad_runner import CADRunner
 from rag_corpus.examples_universal import EXAMPLES as UNIV_EXAMPLES
@@ -86,7 +88,13 @@ SAMPLE_ARCHETYPES = [
 
 
 def extract_parameters(code: str) -> list:
-    """Extract PARAMS dictionary into CADParameter-style objects."""
+    """Extract PARAMS dictionary into CADParameter-style objects.
+
+    Bounds are snapped so every entry validates against the CADParameter
+    schema (integer params require whole-number default/min/max/step).
+    Raises if an entry cannot be made valid — seeds must never persist
+    parameter metadata that /api/recompute would reject with a 422.
+    """
     tree = ast.parse(code)
     params_dict = {}
     for node in tree.body:
@@ -100,11 +108,22 @@ def extract_parameters(code: str) -> list:
     for k, v in params_dict.items():
         val = float(v)
         is_int = val.is_integer()
-        min_val = round(val * 0.4, 1) if val > 0 else 1.0
-        max_val = round(val * 2.5, 1) if val > 0 else 50.0
-        step_val = 1.0 if is_int else 0.5
+        if val > 0:
+            raw_min, raw_max = round(val * 0.4, 1), round(val * 2.5, 1)
+        elif val < 0:
+            raw_min, raw_max = round(val * 2.5, 1), round(val * 0.4, 1)
+        else:
+            raw_min, raw_max = 0.0, 1.0
+        if is_int:
+            # Snap outward so the default stays in range and all bounds are whole.
+            min_val = min(math.floor(raw_min), math.floor(val))
+            max_val = max(math.ceil(raw_max), math.ceil(val))
+            step_val = 1.0
+        else:
+            min_val, max_val = raw_min, raw_max
+            step_val = 0.5
 
-        params_list.append({
+        entry = {
             "name": k,
             "label": k.replace("_", " ").title(),
             "type": "integer" if is_int else "number",
@@ -113,8 +132,53 @@ def extract_parameters(code: str) -> list:
             "max": max_val,
             "step": step_val,
             "unit": "mm" if ("dia" in k or "len" in k or "width" in k or "thick" in k or "depth" in k or "radius" in k or "height" in k) else None,
-        })
+        }
+        # Fail fast: never seed metadata that recompute validation would reject.
+        CADParameter(**entry)
+        params_list.append(entry)
     return params_list
+
+
+async def repair_seed_parameters(db: AsyncSession) -> int:
+    """Re-derive parameters_json for seed rows (and their forks) whose stored
+    metadata fails current CADParameter validation.
+
+    Older extractor versions wrote fractional min/max bounds on integer params;
+    /api/recompute revalidates strictly, so those models 422 on any slider
+    interaction. Bounds are snapped outward from each row's own PARAMS block —
+    names and defaults are untouched. Returns the number of repaired rows.
+    """
+    from sqlalchemy import or_
+
+    repaired = 0
+    for model in (Generation, Version):
+        res = await db.execute(
+            select(model).where(model.script_id.like("seed\\_%", escape="\\"))
+        )
+        for row in res.scalars():
+            try:
+                stored = json.loads(row.parameters_json or "[]")
+            except Exception:
+                stored = []
+            needs_repair = False
+            for entry in stored:
+                try:
+                    CADParameter(**entry)
+                except Exception:
+                    needs_repair = True
+                    break
+            if not needs_repair:
+                continue
+            try:
+                fixed = extract_parameters(row.python_code)
+            except Exception as exc:
+                logger.warning(f"Could not re-derive params for {row.script_id}: {exc}")
+                continue
+            row.parameters_json = json.dumps(fixed)
+            repaired += 1
+            logger.info(f"Repaired parameter metadata for {row.script_id}")
+    await db.commit()
+    return repaired
 
 
 async def seed_gallery():
@@ -222,6 +286,9 @@ async def seed_gallery():
 
         await db.commit()
         logger.info(f"Seeding completed. {seeded_count} models seeded to gallery.")
+
+        repaired = await repair_seed_parameters(db)
+        logger.info(f"Parameter repair pass: {repaired} rows repaired.")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Refresh-token rotation** — version column + reuse detection (old token → 401)
 - **PII scrubber** — emails/phones/secrets redacted before LLM calls
 - **SEO + nginx hardening** — OG/Twitter meta, gzip, asset caching, security headers
+- **Sketch-to-CAD** — `POST /api/generate/sketch` accepts a PNG/JPEG/WEBP mechanical sketch image + optional natural language prompt; Gemini Vision (Step 1) performs strict Geometric Chain-of-Thought (Axis Mapping, Base Profile Type, Curve Rules, Feature Elevations), enforced via Pydantic `SketchVisionAnalysis` structured outputs (`response_schema`) to eliminate JSON truncation/syntax issues; `BUILD123D_SYSTEM_PROMPT` enforces Rule 16 (forbidding box-minus-box boolean subtraction for arches and mandating exact feature Z-elevations); existing LLM+CAD pipeline (Step 2) builds the parametric model with self-correction; returns identical `GenerateResponse` shape; frontend adds drag-drop upload zone + thumbnail preview in `PromptPanel` with optional prompt guidance hint; 8 tests in `test_sketch_endpoint.py` (88/88 test suite pass)
 
 ### Fixed
 - **AST sandbox bypasses** — dunder/alias/lambda blocks + 6 adversarial tests
@@ -31,6 +32,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Onboarding tour crash** — added missing `useCallback` import in `OnboardingTour.jsx` eliminating `ReferenceError: useCallback is not defined`
 - **Gallery seeding** — all 8 community models seeded with verified watertight STL meshes and parameters
 - **Doc consolidation** — removed duplicate `architecture.md` (superseded by `CODEBASE_GUIDE.md`) and `memory.md` (superseded by `AGENTS.md` + `CHANGELOG.md`); `rules.md` §6.1/§6.2 now route live-updates to the surviving files, and `AGENTS.md` absorbs the build123d import-cost, ChromaDB telemetry and Postgres-ceiling gotchas
+- **Seeded-model recompute 422** — `seed_gallery.extract_parameters` typed params `integer` from whole defaults but wrote fractional 0.4×/2.5× min/max bounds, which strict `CADParameter` validation rejects; every seeded model (and its forks) 422'd on any slider drag. Bounds are now snapped to whole numbers, entries are validated with `CADParameter` at seed time, `seed_gallery.py` repairs pre-existing seed/fork rows on run, and the frontend surfaces 422 field details instead of bare "status code 422"
+- **422 request diagnostics** — `RequestValidationError` handler logs field-level reasons server-side (response shape unchanged)
 
 ### Planned
 - PostgreSQL migration (replace SQLite for production)

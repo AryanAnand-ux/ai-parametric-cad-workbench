@@ -36,6 +36,8 @@ import {
   resolveAssetUrl,
   getGenerationDetail,
   publishDesign,
+  formatApiError,
+  generatePartFromSketch,
 } from './api';
 import { VISUAL_STYLES, VIEWPORT_BACKGROUNDS } from './constants/visualStyles';
 import { logger } from './utils/logger';
@@ -202,6 +204,27 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
   const scrollTimerRef = useRef(null);
   const recomputeSequenceRef = useRef(0);
   const generateAbortRef = useRef(null);
+
+  // Sketch-to-CAD state
+  const [sketchFile, setSketchFile] = useState(null);
+  const [sketchLoading, setSketchLoading] = useState(false);
+
+  // Analyze a mechanical sketch image via Gemini Vision → CAD pipeline
+  const handleSketchGenerate = useCallback(async () => {
+    if (!sketchFile) return;
+    setSketchLoading(true);
+    setError(null);
+    pushSnapshot();
+    try {
+      const data = await generatePartFromSketch(sketchFile, prompt);
+      applyPartResponse(data);
+      setSketchFile(null);
+    } catch (err) {
+      setError(formatApiError(err, 'Sketch analysis failed. Try a clearer image.'));
+    } finally {
+      setSketchLoading(false);
+    }
+  }, [sketchFile, prompt, applyPartResponse, setError, pushSnapshot]);
 
   // Health check on mount + 30s polling + debounce timer cleanup + tour persistence
   useEffect(() => {
@@ -460,9 +483,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
       } catch (err) {
         if (requestSequence !== recomputeSequenceRef.current) return;
         logger.error('[Recompute error]', err);
-        const detail = err.response?.data?.detail;
-        const msg = typeof detail === 'string' ? detail : (detail?.error || err.message || 'Recomputation failed.');
-        setError(`Recomputation error: ${msg}`);
+        setError(`Recomputation error: ${formatApiError(err, 'Recomputation failed.')}`);
       } finally {
         if (requestSequence === recomputeSequenceRef.current) setRecomputing(false);
       }
@@ -492,10 +513,8 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
       setRecomputeSuccess(res);
     } catch (err) {
       if (requestSequence !== recomputeSequenceRef.current) return;
-      logger.error('[Reset error]', err);
-      const detail = err.response?.data?.detail;
-      const message = typeof detail === 'string' ? detail : (detail?.error || err.message || 'Reset recomputation failed.');
-      setError(`Reset error: ${message}`);
+        logger.error('[Reset error]', err);
+        setError(`Reset error: ${formatApiError(err, 'Reset recomputation failed.')}`);
     } finally {
       if (requestSequence === recomputeSequenceRef.current) setRecomputing(false);
     }
@@ -520,10 +539,8 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
       setRecomputeSuccess(res);
     } catch (err) {
       if (requestSequence !== recomputeSequenceRef.current) return;
-      logger.error('[Force recompute error]', err);
-      const detail = err.response?.data?.detail;
-      const msg = typeof detail === 'string' ? detail : (detail?.error || err.message || 'Recomputation failed.');
-      setError(`Recomputation error: ${msg}`);
+        logger.error('[Force recompute error]', err);
+        setError(`Recomputation error: ${formatApiError(err, 'Recomputation failed.')}`);
     } finally {
       if (requestSequence === recomputeSequenceRef.current) setRecomputing(false);
     }
@@ -898,6 +915,10 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
             loading={loading}
             handleGenerate={handleGenerate}
             PRESET_CATEGORIES={PRESET_CATEGORIES}
+            onSketchFile={setSketchFile}
+            sketchFile={sketchFile}
+            sketchLoading={sketchLoading}
+            handleSketchGenerate={handleSketchGenerate}
           />
         )}
 

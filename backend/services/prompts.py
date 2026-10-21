@@ -65,6 +65,20 @@ You MUST follow every single one of these rules without exception:
 13. **Check for unused variables and unreachable/dead code.**
 14. **Check Python indentation and scope before returning code.**
 15. **Execute a final static review of the complete script from top to bottom before export.**
+16. **Curve Rule & 2D Profile Creation (MANDATORY BUILD123D SYNTAX).**
+    - For arches, U-shapes, hooks, or curved profiles: NEVER dump `Line()` or `RadiusArc()` directly into `BuildSketch()`. In build123d, `Line()` and arcs are 1D curves with ZERO area; placing them directly in `BuildSketch` fails with `UserWarning: sketch is None - BuildSketch didn't create anything`.
+    - **To create a curved 2D sketch:** You MUST wrap closed wire segments in `with BuildLine() as l:` and call `make_face()`:
+      ```python
+      with BuildSketch(Plane.XZ) as s:
+          with BuildLine() as l:
+              Line(...)
+              RadiusArc(...)
+              Line(...)
+          make_face()  # CRITICAL: converts closed 1D wire into a 2D face for extrude
+      extrude(amount=depth)
+      ```
+    - **OR use Solid-First CSG:** Build the arch directly from 3D primitives (e.g. `Cylinder()` + `Box()` with `Mode.ADD` / `Mode.SUBTRACT`), which is often simpler and more robust.
+    - Explicitly place secondary features (flanges, bosses, brackets) at their exact attachment elevation along the Z-axis (e.g. at the top of legs at Z=leg_height, or base at Z=0). Never leave features floating or misplaced in Z.
 
 ### 📋 MANDATORY FINAL CHECK
 Internally execute this requirement checklist before outputting code:
@@ -151,13 +165,13 @@ When plate geometry extends along Z from `0.0` to `T` (`plate_thickness`):
 - **Through-Holes & Slots:** Center at `Z = T / 2.0`, height = `T * 2.0` (fully penetrates both faces).
 - **Top-Surface Blind Pocket (recess depth = `d`):**
   Center the cutting tool at `Z = T - d / 2.0`, height = `d`.
-  *Cuts from \(Z = T - d\) to \(Z = T\). Leaves floor thickness \(T - d\).*
+  *Cuts from Z = T - d to Z = T. Leaves floor thickness T - d.*
 - **Bottom-Surface Blind Pocket (recess depth = `d`):**
   Center the cutting tool at `Z = d / 2.0`, height = `d`.
-  *Cuts from \(Z = 0\) to \(Z = d\). Leaves ceiling thickness \(T - d\).*
+  *Cuts from Z = 0 to Z = d. Leaves ceiling thickness T - d.*
 - **Top-Surface Conical Countersink (depth = `cs_depth`):**
   Center `Cone(bottom_radius=hole_r, top_radius=head_r, height=cs_depth)` at `Z = T - cs_depth / 2.0`.
-  *Wide head radius sits flush at \(Z = T\); small hole radius sits at \(Z = T - cs\_depth\).*
+  *Wide head radius sits flush at Z = T; small hole radius sits at Z = T - cs_depth.*
 
 ### Rule 4d — The 8 Universal CAD Archetype Recipes (Generate Any 3D Geometry)
 When the user requests any specific class of part, follow the corresponding architectural recipe:
@@ -478,7 +492,7 @@ Embed rotation in `Location` as shown above.
 
 ### True 90° Conical Countersunk Holes
 For flush-mount aerospace fasteners, standard flat-head countersinks have a 90° included angle (45° half-angle).
-Because \(\tan(45^\circ) = 1.0\), the conical taper depth is exactly \(\text{head\_radius} - \text{hole\_radius}\).
+Because tan(45°) = 1.0, the conical taper depth is exactly head_radius - hole_radius.
 Always use a true conical frustum (`Cone` with `bottom_radius` and `top_radius`) subtracted from the top surface:
 
 ```python
@@ -776,6 +790,7 @@ E. **Dimension / Logic Error** — Part builds but dimensions are wrong vs. user
 - `extrude(amount=...)` must be INSIDE `with BuildPart()` block
 - `fillet(edges, radius)` must be OUTSIDE/AFTER `with BuildPart()` block
 - `Rotation(x,y,z)` is NOT a context manager — use `Location((x,y,z), (rx,ry,rz))` instead
+- `sketch is None` / `BuildSketch didn't create anything`: In build123d, `Line()`, `RadiusArc()`, etc. are 1D curves that cannot be extruded directly! You MUST wrap them in `with BuildLine() as l:` and call `make_face()`, OR use CSG solid primitives (`Box`, `Cylinder`) with `Mode.ADD` / `Mode.SUBTRACT`.
 
 **Category C — Geometry Assertion (disconnected solid):**
 - `AssertionError: Disconnected geometry: N separate bodies` means arms/features are not physically touching the main body

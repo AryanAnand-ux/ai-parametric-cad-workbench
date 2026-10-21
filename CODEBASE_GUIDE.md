@@ -241,6 +241,7 @@ graph TD
 | `backend/services/auth_service.py` | **Security, JWT, & Quota Enforcement**. Handles JWT token generation/decoding, password hashing, user quota tracking (free-tier 50 calls/day), and per-user rate limit key generation. |
 | `backend/services/cleanup.py` | **Artifact Lifecycle Manager**. Periodically purges stale temporary files and meshes older than 24 hours while explicitly preserving permanent showcase seed models. |
 | `backend/services/gemini_web_client.py` | **Reverse-Engineered Gemini Web2API Client**. Allows the workbench to communicate directly with Gemini Web interface endpoints for zero-auth or session-cookie-backed inference when official API quotas are exceeded. |
+| `backend/services/vision_service.py` | **Gemini Vision Sketch-to-CAD Parser**. Parses uploaded mechanical sketches or engineering blueprints using strict Geometric Chain-of-Thought (Axis Mapping, Base Profile Type, Curve Rules, Feature Elevations), enforced via Pydantic `SketchVisionAnalysis` structured outputs to produce rich topological specifications. |
 
 ---
 
@@ -304,6 +305,7 @@ graph TD
 | `backend/test_quota.py` | Verifies free-tier daily quotas (50 generations/day) and daily reset logic. |
 | `backend/test_recompute_validation.py` | Tests sub-200ms parameter injection without syntax distortion. |
 | `backend/test_schemas.py` | Validates Pydantic schema constraints, types, and defaults. |
+| `backend/test_sketch_endpoint.py` | Tests `POST /api/generate/sketch` endpoint: MIME validation, size caps, structured vision parsing, optional prompt forwarding, and error fallbacks. |
 | `backend/test_universal_archetypes.py` | Verifies that all 20 universal archetype scripts compile into single-solid, watertight B-Rep models. |
 
 ---
@@ -319,8 +321,8 @@ graph TD
 | `frontend/src/Router.jsx` | **Hash-Based Router**. Listens to `window.location.hash` and smoothly switches between `LandingPage`, `Gallery`, and `App` (Workbench). |
 | `frontend/src/App.jsx` | **Master CAD Workbench UI**. The central interface coordinating the Bento Grid layout, 3D viewport, parameter sliders, chat panel, telemetry HUD, toolbar, and project drawers. |
 | `frontend/src/LandingPage.jsx` | **Marketing & Product Homepage**. High-converting landing page with technical aesthetic, interactive feature showcases, preset CAD prompt launchpads, and live preview links. |
-| `frontend/src/api.js` | **Axios API Client**. Centralizes all HTTP calls (auth, generation, streaming SSE, recompute, modify, gallery, likes, and batch ZIP downloads). |
-| `frontend/src/index.css` | **Global Design System CSS**. Neobrutalist design system styling, custom scrollbars, Bento grid layouts, high-contrast borders, and color tokens. |
+| `frontend/src/api.js` | **Axios API Client**. Centralizes all HTTP calls (auth, generation, streaming SSE, recompute, modify, gallery, likes, batch ZIP downloads, and sketch-to-CAD image uploads). |
+| `frontend/src/index.css` | **Global Design System CSS**. Neobrutalist design system styling, custom scrollbars, Bento grid layouts, high-contrast borders, sketch upload dropzone, and color tokens. |
 
 ---
 
@@ -339,7 +341,7 @@ graph TD
 | `frontend/src/components/Viewer3D.jsx` | **Interactive 3D WebGL Viewport**. Powered by `@react-three/fiber` and Three.js. Renders STL meshes, shaded wireframe edges, dimensional bounding boxes, coordinate axes, and lighting. |
 | `frontend/src/components/ParameterSlider.jsx` | **Parametric Slider Controller**. Displays numeric inputs and range sliders for part dimensions. Debounces updates and triggers sub-200ms kernel recomputations. |
 | `frontend/src/components/ChatModifyPanel.jsx` | **Conversational Modification Interface**. Chat interface allowing users to refine their model in natural language, with quick engineering modification presets. |
-| `frontend/src/components/PromptPanel.jsx` | **Natural Language Prompt Input**. Primary text entry panel with generate trigger, generation status badges, and quick-start prompt categories. |
+| `frontend/src/components/PromptPanel.jsx` | **Natural Language & Sketch Prompt Input**. Primary text entry panel with generate trigger, generation status badges, quick-start prompt categories, and drag-and-drop Sketch-to-CAD upload zone with optional prompt guidance. |
 | `frontend/src/components/TelemetryHUD.jsx` | **Engineering Telemetry Overlay**. Floating viewport HUD displaying physical metrics: watertightness status, body count, volume ($mm^3$), and bounding envelope dimensions. |
 | `frontend/src/components/ViewportToolbar.jsx` | **Viewport Control Bar**. Floating toolbar providing camera preset toggles (Top, Front, Side, Isometric), PBR material selection, and visual style modes (shaded edges, wireframe). |
 | `frontend/src/components/ModelThumbnail.jsx` | **Vector Blueprint Thumbnail Generator**. Renders interactive CAD archetype diagrams with technical grid overlays, measurement indicators, and material badges. |

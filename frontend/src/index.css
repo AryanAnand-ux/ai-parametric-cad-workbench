@@ -719,6 +719,187 @@ body {
   background: #FFFFFF;
 }
 
+/* ── Sketch-to-CAD Upload Zone ───────────────────────── */
+
+.sketch-section {
+  padding: 0 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sketch-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+}
+.sketch-divider::before,
+.sketch-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+.sketch-divider-label {
+  font-size: 10px;
+  font-family: var(--font-sans);
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.sketch-upload-zone {
+  border: 2px dashed var(--border-color);
+  border-radius: 10px;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: border-color 0.18s, background 0.18s;
+  background: var(--bg-secondary);
+  user-select: none;
+}
+.sketch-upload-zone:hover,
+.sketch-upload-zone.drag-over {
+  border-color: var(--cad-primary);
+  background: var(--accent-cream);
+}
+.sketch-upload-zone:focus-visible {
+  outline: 2px solid var(--cad-primary);
+  outline-offset: 2px;
+}
+.sketch-upload-icon {
+  color: var(--text-dim);
+  flex-shrink: 0;
+  transition: color 0.18s;
+}
+.sketch-upload-zone:hover .sketch-upload-icon,
+.sketch-upload-zone.drag-over .sketch-upload-icon {
+  color: var(--cad-primary);
+}
+.sketch-upload-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+}
+.sketch-upload-label u {
+  color: var(--cad-primary);
+  text-decoration-thickness: 1px;
+}
+.sketch-upload-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  letter-spacing: 0.03em;
+}
+
+/* Preview chip once a file is selected */
+.sketch-preview-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.sketch-preview-img {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.sketch-preview-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sketch-preview-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sketch-preview-size {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+.sketch-clear-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.sketch-clear-btn:hover {
+  color: var(--error-bg);
+  border-color: var(--error-bg);
+  background: rgba(200, 75, 49, 0.06);
+}
+
+/* Analyze & Generate button */
+.sketch-analyze-btn {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--accent-terracotta);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.sketch-analyze-btn:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+.sketch-analyze-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+.sketch-analyze-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sketch-prompt-hint {
+  font-size: 11px;
+  color: var(--cad-primary);
+  font-family: var(--font-sans);
+  background: var(--accent-cream);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
 /* ── Parametric Controls Section ─────────────────────── */
 
 .params-scroll {

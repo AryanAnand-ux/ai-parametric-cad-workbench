@@ -21,6 +21,29 @@ export function resolveAssetUrl(path) {
   return `${baseUrl}${cleanPath}`;
 }
 
+// Human-readable message from an API error. FastAPI validation failures
+// arrive as a `detail` ARRAY (one entry per field) — without this they
+// surface as the useless "Request failed with status code 422".
+export function formatApiError(err, fallback = 'Request failed.') {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail.map((d) => {
+      if (typeof d === 'string') return d;
+      const loc = Array.isArray(d?.loc)
+        ? d.loc.filter((x) => x !== 'body').join('.')
+        : '';
+      const msg = d?.msg || '';
+      // Pydantic v2 prefixes messages with "Value error, " — strip it.
+      const clean = msg.replace(/^Value error,\s*/i, '');
+      return loc ? `${loc}: ${clean}`.trim() : clean;
+    }).filter(Boolean);
+    if (msgs.length) return msgs.join('; ');
+  }
+  if (detail?.error) return detail.error;
+  return err?.message || fallback;
+}
+
 // Token helper
 export function getAuthToken() {
   return localStorage.getItem('cad_token');
@@ -156,6 +179,50 @@ export async function healthCheck() {
 export async function generatePart(prompt) {
   const { data } = await generationApi.post('/api/generate', { prompt });
   return data;
+}
+
+/**
+ * Upload a mechanical sketch image and generate a parametric 3D model from it.
+ * Step 1: Gemini Vision parses the sketch → derived_prompt + parameters.
+ * Step 2: derived_prompt feeds into the existing CAD generate pipeline.
+ *
+ * Returns the same GenerateResponse shape as generatePart().
+ * @param {File} imageFile - PNG, JPEG, or WEBP sketch file (max 10 MB)
+ * @param {string} [prompt] - Optional natural language guidance or dimension adjustments
+ * @returns {Promise<GenerateResponse>}
+ */
+export async function generatePartFromSketch(imageFile, prompt = '') {
+  const formData = new FormData();
+  formData.append('image', imageFile);
+  if (prompt && typeof prompt === 'string' && prompt.trim()) {
+    formData.append('prompt', prompt.trim());
+  }
+
+  const token = getAuthToken();
+  const baseUrl = BASE_URL.replace(/\/+$/, '');
+
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/api/generate/sketch`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+  } catch (err) {
+    throw new Error(`Sketch upload failed: ${err.message}`);
+  }
+
+  if (!response.ok) {
+    const errJson = await response.json().catch(() => ({ detail: 'Sketch generation failed' }));
+    const detail = errJson?.detail;
+    const msg =
+      typeof detail === 'string'
+        ? detail
+        : detail?.error || `Server returned ${response.status}`;
+    throw new Error(msg);
+  }
+
+  return response.json();
 }
 
 /**

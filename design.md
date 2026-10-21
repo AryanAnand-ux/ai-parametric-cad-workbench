@@ -189,6 +189,13 @@ color: white;
 | `transparent` | Glass-like translucent |
 | `wireframe` | Black edges only |
 
+### 5.7 Sketch-to-CAD Upload Zone
+- Dashed border dropzone with drag-and-drop state transitions (`border-color` to `--cad-primary`, background to `--accent-cream`)
+- Compact image preview card (52×52px thumbnail) with filename ellipsis and file size badge
+- Quick dismiss circular button (22px with hover error tint)
+- Dynamic prompt guidance hint (`.sketch-prompt-hint`) indicating attached prompt notes
+- Primary action CTA button in warm terracotta accent (`--accent-terracotta`) with loading spinner state
+
 ---
 
 ## 6. Landing Page Design

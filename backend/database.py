@@ -22,20 +22,35 @@ logger = logging.getLogger("cad_workbench.database")
 _default_db_path = BASE_DIR / "cad_workbench.db"
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite+aiosqlite:///{_default_db_path}")
 
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    # SQLite needs connect_args for concurrent access
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
-)
+# Connection pool settings — SQLite uses StaticPool and must NOT receive
+# pool_size/max_overflow kwargs (they cause TypeError). PostgreSQL benefits
+# from explicit pool tuning. Build the kwargs dict conditionally.
+_is_sqlite = "sqlite" in DATABASE_URL
 
-if "sqlite" in DATABASE_URL:
+_engine_kwargs: dict = {
+    "echo": False,
+    "connect_args": {"check_same_thread": False} if _is_sqlite else {},
+}
+if not _is_sqlite:
+    # PostgreSQL-only pool tuning
+    _engine_kwargs["pool_size"] = 5
+    _engine_kwargs["max_overflow"] = 10
+    _engine_kwargs["pool_recycle"] = 1800   # Recycle connections every 30 min
+    _engine_kwargs["pool_pre_ping"] = True  # Drop stale connections before use
+
+engine = create_async_engine(DATABASE_URL, **_engine_kwargs)
+
+if _is_sqlite:
     @event.listens_for(engine.sync_engine, "connect")
     def _set_sqlite_pragmas(dbapi_conn, _connection_record):
         """WAL mode + busy timeout so concurrent generate/gallery writes don't hit 'database is locked'."""
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA busy_timeout=5000")
+        # Synchronous=NORMAL is safe with WAL mode and gives a meaningful perf boost.
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        # Keep page cache in memory (default is 2MB; 8MB handles large CAD script blobs).
+        cursor.execute("PRAGMA cache_size=-8000")  # negative = KiB
         cursor.close()
 
 async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -59,6 +74,17 @@ async def create_tables():
     """Create all tables (used on startup). Safe to call multiple times."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # WAL checkpoint: truncate the WAL file on startup to prevent unbounded growth.
+        # The cad_workbench.db-wal was observed growing to 2.9MB without this.
+        if _is_sqlite:
+            def _wal_checkpoint(sync_conn):
+                try:
+                    sync_conn.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    logger.info("[DB] WAL checkpoint (TRUNCATE) completed on startup.")
+                except Exception as e:
+                    logger.warning(f"[DB] WAL checkpoint failed (non-fatal): {e}")
+            await conn.run_sync(_wal_checkpoint)
 
         # Automatic SQLite migration for newly added columns
         if "sqlite" in DATABASE_URL:
