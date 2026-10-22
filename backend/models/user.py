@@ -6,6 +6,7 @@ Passwords are hashed with bcrypt via passlib.
 """
 
 import uuid
+from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy import String, DateTime, Boolean, Text, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -27,13 +28,13 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str] = mapped_column(String(100), nullable=False, default="Engineer")
     plan_tier: Mapped[str] = mapped_column(String(20), nullable=False, default="free")
-    api_key: Mapped[str | None] = mapped_column(
+    api_key: Mapped[Optional[str]] = mapped_column(
         String(64), unique=True, index=True, nullable=True, default=None
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     refresh_token_version: Mapped[int] = mapped_column(Integer, default=0)
     generations_today: Mapped[int] = mapped_column(default=0)
-    last_generation_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    last_generation_date: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
