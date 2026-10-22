@@ -94,6 +94,7 @@
 - [x] Frontend runtime fix — added missing `useCallback` import in `OnboardingTour.jsx` preventing component crash on first visit
 - [x] Doc consolidation — deleted `architecture.md` + `memory.md` as duplicates; doc set is now README, AGENTS, rules, CODEBASE_GUIDE, prd, design, task, CHANGELOG
 - [x] Sketch-to-CAD — `POST /api/generate/sketch` (multipart upload with optional user prompt), `VisionService` with Geometric Chain-of-Thought (Axis Mapping, Base Profile Type, Curve Rules, Feature Elevations), Pydantic `SketchVisionAnalysis` structured outputs, drag-drop upload zone + thumbnail preview in `PromptPanel` with attached prompt guidance, `generatePartFromSketch` in `api.js`, 8 tests in `test_sketch_endpoint.py` (88/88 test suite pass)
+- [x] Audit Hardening (Round 6) — SEC-01 auth limiter capacity bounding & auto-pruning, SEC-02 exception sanitization with PII/path scrubbing, SEC-03 constant-time compare_digest admin token check, DAT-01 idempotent gallery likes via DesignLike model, REL-01 on-demand CAD recompute gating on GET, COR-01 auto-workspace fork on shared modifications, REL-02 process group cleanup on Unix, ARC-01 automatic frontend token refresh interceptor with queue; 88/88 backend tests passing, frontend lint & build clean
 
 ---
 

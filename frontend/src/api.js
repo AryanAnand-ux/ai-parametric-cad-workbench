@@ -49,13 +49,90 @@ export function getAuthToken() {
   return localStorage.getItem('cad_token');
 }
 
-export function setAuthToken(token) {
+export function getRefreshToken() {
+  return localStorage.getItem('cad_refresh_token');
+}
+
+export function setAuthToken(token, refreshToken = undefined) {
   if (token) {
     localStorage.setItem('cad_token', token);
   } else {
     localStorage.removeItem('cad_token');
   }
+  if (refreshToken !== undefined) {
+    if (refreshToken) {
+      localStorage.setItem('cad_refresh_token', refreshToken);
+    } else {
+      localStorage.removeItem('cad_refresh_token');
+    }
+  }
 }
+
+// Token refresh synchronization state
+let isRefreshing = false;
+let refreshSubscribers = [];
+
+function subscribeTokenRefresh(cb) {
+  refreshSubscribers.push(cb);
+}
+
+function onRefreshed(newToken) {
+  refreshSubscribers.forEach((cb) => cb(newToken));
+  refreshSubscribers = [];
+}
+
+async function handleTokenRefresh(originalRequest, clientInstance) {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) {
+    setAuthToken(null, null);
+    return Promise.reject(new Error('No refresh token available.'));
+  }
+
+  if (isRefreshing) {
+    return new Promise((resolve, reject) => {
+      subscribeTokenRefresh((newToken) => {
+        if (!newToken) return reject(new Error('Token refresh failed.'));
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        resolve(clientInstance(originalRequest));
+      });
+    });
+  }
+
+  isRefreshing = true;
+  try {
+    const { data } = await axios.post(`${BASE_URL}/api/auth/refresh`, { refresh_token: refreshToken });
+    const newToken = data.access_token;
+    const newRefresh = data.refresh_token;
+    setAuthToken(newToken, newRefresh);
+    onRefreshed(newToken);
+    originalRequest.headers.Authorization = `Bearer ${newToken}`;
+    return clientInstance(originalRequest);
+  } catch (err) {
+    setAuthToken(null, null);
+    onRefreshed(null);
+    return Promise.reject(err);
+  } finally {
+    isRefreshing = false;
+  }
+}
+
+const setupResponseInterceptor = (instance) => {
+  instance.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+      const originalRequest = error.config;
+      if (error.response?.status === 401 && !originalRequest._retry && getRefreshToken()) {
+        originalRequest._retry = true;
+        try {
+          return await handleTokenRefresh(originalRequest, instance);
+        } catch (refreshErr) {
+          return Promise.reject(refreshErr);
+        }
+      }
+      return Promise.reject(error);
+    }
+  );
+};
 
 // Axios instance with auth interceptor
 const api = axios.create({
@@ -70,6 +147,7 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+setupResponseInterceptor(api);
 
 const generationApi = axios.create({
   baseURL: BASE_URL,
@@ -83,6 +161,7 @@ generationApi.interceptors.request.use((config) => {
   }
   return config;
 });
+setupResponseInterceptor(generationApi);
 
 const recomputeApi = axios.create({
   baseURL: BASE_URL,
@@ -96,6 +175,7 @@ recomputeApi.interceptors.request.use((config) => {
   }
   return config;
 });
+setupResponseInterceptor(recomputeApi);
 
 // ─── Authentication API ───────────────────────────────────────────────────
 
@@ -106,8 +186,9 @@ export async function registerUser({ email, password, display_name }) {
     display_name,
   });
   const token = data.access_token || data.tokens?.access_token;
+  const refreshToken = data.refresh_token || data.tokens?.refresh_token;
   if (token) {
-    setAuthToken(token);
+    setAuthToken(token, refreshToken);
   }
   return data;
 }
@@ -118,8 +199,9 @@ export async function loginUser({ email, password }) {
     password,
   });
   const token = data.access_token || data.tokens?.access_token;
+  const refreshToken = data.refresh_token || data.tokens?.refresh_token;
   if (token) {
-    setAuthToken(token);
+    setAuthToken(token, refreshToken);
   }
   return data;
 }
@@ -132,14 +214,14 @@ export async function fetchCurrentUser() {
     return data.user || data;
   } catch (err) {
     if (err.response?.status === 401) {
-      setAuthToken(null);
+      setAuthToken(null, null);
     }
     return null;
   }
 }
 
 export function logoutUser() {
-  setAuthToken(null);
+  setAuthToken(null, null);
 }
 
 // ─── Projects & Workspace API ─────────────────────────────────────────────

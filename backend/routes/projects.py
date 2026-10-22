@@ -9,6 +9,8 @@ GET    /api/projects/{id}/generations         — List generations in project
 GET    /api/generations/{gen_id}              — Get generation details
 """
 
+from __future__ import annotations
+
 import json
 import logging
 from pathlib import Path
@@ -266,26 +268,27 @@ async def get_generation(
         except Exception:
             return None
 
-    # Ensure physical mesh file exists on disk; if missing, re-generate on-demand
+    # Ensure physical mesh file exists on disk; if missing, re-generate on-demand (gated to owner/auth user)
     stl_path = MODELS_DIR / f"{gen.script_id}.stl"
     if gen.python_code and not stl_path.exists():
-        try:
-            from services.cad_runner import CADRunner
-            exec_res = await CADRunner.execute_script_async(
-                script_id=gen.script_id,
-                python_code=gen.python_code,
-                design_mode=gen.design_mode or "single_solid",
-            )
-            if exec_res.get("status") == "success":
-                if exec_res.get("mesh_url"):
-                    gen.mesh_url = exec_res["mesh_url"]
-                if exec_res.get("step_url"):
-                    gen.step_url = exec_res["step_url"]
-                if exec_res.get("mesh_info"):
-                    gen.mesh_info_json = json.dumps(exec_res["mesh_info"])
-                await db.commit()
-        except Exception as e:
-            logger.warning(f"On-demand mesh regeneration failed for {gen.script_id}: {e}")
+        if is_owner or (current_user and getattr(current_user, "is_active", False)):
+            try:
+                from services.cad_runner import CADRunner
+                exec_res = await CADRunner.execute_script_async(
+                    script_id=gen.script_id,
+                    python_code=gen.python_code,
+                    design_mode=gen.design_mode or "single_solid",
+                )
+                if exec_res.get("status") == "success":
+                    if exec_res.get("mesh_url"):
+                        gen.mesh_url = exec_res["mesh_url"]
+                    if exec_res.get("step_url"):
+                        gen.step_url = exec_res["step_url"]
+                    if exec_res.get("mesh_info"):
+                        gen.mesh_info_json = json.dumps(exec_res["mesh_info"])
+                    await db.commit()
+            except Exception as e:
+                logger.warning(f"On-demand mesh regeneration failed for {gen.script_id}: {e}")
 
     all_versions = list(gen.versions)
     total_versions = len(all_versions)
@@ -421,7 +424,47 @@ async def save_version_record(
         )
         gen = result.scalars().first()
         if not gen:
-            return None
+            # Check if this is a public design from another user being modified
+            pub_res = await db.execute(
+                select(Generation).where(
+                    (Generation.script_id == base_script_id) | (Generation.script_id == root_id),
+                    Generation.is_public == True
+                ).order_by(Generation.created_at.desc())
+            )
+            pub_gen = pub_res.scalars().first()
+            if pub_gen:
+                user_proj_res = await db.execute(
+                    select(Project).where(Project.user_id == user_id).order_by(Project.created_at.desc())
+                )
+                user_proj = user_proj_res.scalars().first()
+                if not user_proj:
+                    user_proj = Project(
+                        user_id=user_id,
+                        name=f"Workspace for {pub_gen.part_name or 'Part'}",
+                        description="Auto-created for modified community design"
+                    )
+                    db.add(user_proj)
+                    await db.flush()
+
+                gen = Generation(
+                    project_id=user_proj.id,
+                    user_id=user_id,
+                    prompt=pub_gen.prompt,
+                    script_id=base_script_id,
+                    part_name=pub_gen.part_name,
+                    description=pub_gen.description,
+                    python_code=pub_gen.python_code,
+                    parameters_json=pub_gen.parameters_json,
+                    mesh_info_json=pub_gen.mesh_info_json,
+                    mesh_url=pub_gen.mesh_url,
+                    step_url=pub_gen.step_url,
+                    model_used=pub_gen.model_used,
+                    forked_from=pub_gen.id,
+                )
+                db.add(gen)
+                await db.flush()
+            else:
+                return None
 
         # Determine version number
         v_count_res = await db.execute(

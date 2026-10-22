@@ -20,6 +20,8 @@ Key responsibilities:
   Rule 10 — Tolerances: surface area / volume ratio sanity check
 """
 
+from __future__ import annotations
+
 import os
 import re
 import ast
@@ -124,8 +126,32 @@ BLOCKED_ATTRIBUTES = {
     "__code__", "__reduce__", "__reduce_ex__", "__mro__"
 }
 
+_cad_execution_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def get_cad_execution_semaphore() -> asyncio.Semaphore:
+    global _cad_execution_semaphore
+    try:
+        current_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        current_loop = None
+
+    if _cad_execution_semaphore is None or getattr(_cad_execution_semaphore, "_loop", None) != current_loop:
+        _cad_execution_semaphore = asyncio.Semaphore(max(1, CAD_MAX_CONCURRENT_EXECUTIONS))
+    return _cad_execution_semaphore
+
+
+class _SemaphoreProxy:
+    async def __aenter__(self):
+        return await get_cad_execution_semaphore().__aenter__()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        return await get_cad_execution_semaphore().__aexit__(exc_type, exc_val, exc_tb)
+
+
+CAD_EXECUTION_SEMAPHORE = _SemaphoreProxy()
+
 SAFE_SCRIPT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
-CAD_EXECUTION_SEMAPHORE = asyncio.Semaphore(max(1, CAD_MAX_CONCURRENT_EXECUTIONS))
 
 
 def is_safe_script_id(script_id: str) -> bool:
@@ -498,19 +524,33 @@ class CADRunner:
             # Ensure PYTHONPATH is empty so installed packages outside venv can't be reached
             isolated_env["PYTHONPATH"] = ""
 
-            result = subprocess.run(
-                [PYTHON_EXEC, str(temp_script)],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout_seconds,
-                env=isolated_env,
-                # Wrapper writes STL/STEP via absolute OUTPUT_* paths, so a
-                # fixed cwd is safe and keeps stray relative writes contained.
-                cwd=str(TEMP_DIR),
-            )
-            return result.returncode, result.stdout, result.stderr
+            extra_kwargs = {}
+            if sys.platform != "win32":
+                extra_kwargs["start_new_session"] = True
+
+            try:
+                result = subprocess.run(
+                    [PYTHON_EXEC, str(temp_script)],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=timeout_seconds,
+                    env=isolated_env,
+                    # Wrapper writes STL/STEP via absolute OUTPUT_* paths, so a
+                    # fixed cwd is safe and keeps stray relative writes contained.
+                    cwd=str(TEMP_DIR),
+                    **extra_kwargs,
+                )
+                return result.returncode, result.stdout, result.stderr
+            except subprocess.TimeoutExpired as te:
+                if sys.platform != "win32" and getattr(te, "pid", None):
+                    try:
+                        import signal
+                        os.killpg(os.getpgid(te.pid), signal.SIGKILL)
+                    except Exception:
+                        pass
+                raise
 
         try:
             try:

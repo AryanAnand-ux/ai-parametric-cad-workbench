@@ -262,7 +262,7 @@ def _parse_response(raw_text: str) -> DualOutputPayload:
 # Gemini Client (Tier 1: gemini-2.5-flash, Tier 2: gemini-3.7-flash, Tier 3: gemini-flash-latest)
 # ---------------------------------------------------------------------------
 
-def _call_gemini(prompt: str, system: str, model: str = "gemini-2.5-flash") -> str:
+def _call_gemini(prompt: str, system: str, model: str = "gemini-3.5-flash-lite") -> str:
     """Calls a Gemini model with native JSON mode enforcement and 503 retry."""
     import time as _time
     from google import genai
@@ -451,7 +451,7 @@ class LLMService:
             "gemini-3.5-flash",
             "gemini-flash-latest",
             "gemini-3.7-flash",
-            "gemini-2.5-flash",
+            "gemini-3.8-flash",
         ]
 
         # Tier 1: Official Gemini API (if key configured)

@@ -1,6 +1,8 @@
 """
 FastAPI Application Entry Point — AI-Driven Parametric CAD Workbench API
 """
+from __future__ import annotations
+
 import asyncio
 import io
 import os
@@ -9,6 +11,7 @@ import uuid
 import time
 import logging
 import zipfile
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 from collections import defaultdict
@@ -76,6 +79,19 @@ def scrub_fs_paths(text: str) -> str:
     for root in _SCRUB_ROOTS:
         redacted = redacted.replace(root, "[app]")
     return redacted
+
+
+def sanitize_error_message(prefix: str, exc: Exception) -> str:
+    """Format safe client-facing error message with PII and filesystem paths redacted."""
+    raw = str(exc)
+    try:
+        from services.llm_service import scrub_pii
+        cleaned = scrub_fs_paths(scrub_pii(raw))
+    except Exception:
+        cleaned = scrub_fs_paths(raw)
+    if len(cleaned) > 200:
+        cleaned = cleaned[:197] + "..."
+    return f"{prefix}: {cleaned}"
 
 _modify_id_lock = asyncio.Lock()
 _reserved_modify_ids: set[str] = set()
@@ -175,7 +191,7 @@ async def _enforce_download_access(
 
 def require_admin_token(provided_token: str | None) -> None:
     """Require admin authentication in production and when a token is configured."""
-    if ADMIN_TOKEN and provided_token != ADMIN_TOKEN:
+    if ADMIN_TOKEN and not (provided_token and secrets.compare_digest(provided_token, ADMIN_TOKEN)):
         raise HTTPException(status_code=401, detail="Admin authentication required.")
     if ENVIRONMENT != "development" and not ADMIN_TOKEN:
         raise HTTPException(status_code=503, detail="Admin authentication is not configured.")
@@ -432,7 +448,7 @@ async def generate_part(
         telemetry_metrics.record_generation(False, model_used)
         raise HTTPException(
             status_code=502,
-            detail=f"LLM generation failed (all 3 tiers exhausted): {str(e)}"
+            detail=sanitize_error_message("LLM generation failed (all 3 tiers exhausted)", e)
         )
 
     logger.info(
@@ -807,7 +823,7 @@ async def generate_from_sketch(
         logger.error(f"[SKETCH] Vision parse failed: {vision_err}")
         raise HTTPException(
             status_code=502,
-            detail=f"Sketch vision parsing failed: {vision_err}",
+            detail=sanitize_error_message("Sketch vision parsing failed", vision_err),
         )
 
     logger.info(
@@ -828,7 +844,7 @@ async def generate_from_sketch(
         telemetry_metrics.record_generation(False, model_used)
         raise HTTPException(
             status_code=502,
-            detail=f"CAD code generation failed: {llm_err}",
+            detail=sanitize_error_message("CAD code generation failed", llm_err),
         )
 
     logger.info(
@@ -1272,7 +1288,7 @@ async def modify_part(
         telemetry_metrics.record_generation(False, model_used)
         raise HTTPException(
             status_code=502,
-            detail=f"LLM modification failed: {str(e)}"
+            detail=sanitize_error_message("LLM modification failed", e)
         )
 
     logger.info(

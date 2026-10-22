@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import MODELS_DIR
 from database import get_db
-from models.project import Generation, Project
+from models.project import Generation, Project, DesignLike
 from models.user import User
 from services.auth_service import get_current_user, get_optional_user
 from services.cad_runner import CADRunner
@@ -269,23 +269,31 @@ async def like_design(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Increment like count on a public design."""
-    updated = await db.execute(
-        update(Generation)
-        .where(
+    """Like a public design (idempotent per user)."""
+    result = await db.execute(
+        select(Generation).where(
             Generation.id == generation_id,
             Generation.is_public == True,  # noqa: E712
         )
-        .values(like_count=Generation.like_count + 1)
     )
-    if updated.rowcount == 0:
+    gen = result.scalar_one_or_none()
+    if not gen:
         raise HTTPException(status_code=404, detail="Public design not found")
-    await db.commit()
 
-    count_result = await db.execute(
-        select(Generation.like_count).where(Generation.id == generation_id)
+    # Check if user already liked this design
+    like_res = await db.execute(
+        select(DesignLike).where(
+            DesignLike.user_id == current_user.id,
+            DesignLike.generation_id == generation_id,
+        )
     )
-    return {"like_count": count_result.scalar() or 0}
+    existing_like = like_res.scalar_one_or_none()
+    if not existing_like:
+        db.add(DesignLike(user_id=current_user.id, generation_id=generation_id))
+        gen.like_count = (gen.like_count or 0) + 1
+        await db.commit()
+
+    return {"like_count": gen.like_count or 0, "liked": True}
 
 
 # ---------------------------------------------------------------------------

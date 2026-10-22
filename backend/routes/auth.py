@@ -37,13 +37,26 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 # ─── Login/Register Rate Limit (10/min per IP, local to avoid circular import) ─
 _AUTH_RATE_LIMIT = 10
+_MAX_AUTH_IPS = 2000
 _auth_attempts: dict[str, list[float]] = {}
 
 
 def _check_auth_rate_limit(client_ip: str) -> None:
-    """Sliding-window 10/min per-IP limiter for login/register."""
+    """Sliding-window 10/min per-IP limiter for login/register with memory bounding."""
     now = time.time()
     cutoff = now - 60.0
+
+    # Periodic cleanup: if map grows large, prune expired IPs
+    if len(_auth_attempts) > _MAX_AUTH_IPS:
+        expired = [ip for ip, times in _auth_attempts.items() if not times or times[-1] <= cutoff]
+        for ip in expired:
+            _auth_attempts.pop(ip, None)
+        # If still over threshold, trim oldest entries
+        if len(_auth_attempts) > _MAX_AUTH_IPS:
+            sorted_keys = sorted(_auth_attempts.keys(), key=lambda k: _auth_attempts[k][-1] if _auth_attempts[k] else 0)
+            for k in sorted_keys[:len(_auth_attempts) - _MAX_AUTH_IPS]:
+                _auth_attempts.pop(k, None)
+
     attempts = [t for t in _auth_attempts.get(client_ip, []) if t > cutoff]
     if len(attempts) >= _AUTH_RATE_LIMIT:
         raise HTTPException(

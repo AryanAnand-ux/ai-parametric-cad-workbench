@@ -16,6 +16,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Sketch-to-CAD** — `POST /api/generate/sketch` accepts a PNG/JPEG/WEBP mechanical sketch image + optional natural language prompt; Gemini Vision (Step 1) performs strict Geometric Chain-of-Thought (Axis Mapping, Base Profile Type, Curve Rules, Feature Elevations), enforced via Pydantic `SketchVisionAnalysis` structured outputs (`response_schema`) to eliminate JSON truncation/syntax issues; `BUILD123D_SYSTEM_PROMPT` enforces Rule 16 (forbidding box-minus-box boolean subtraction for arches and mandating exact feature Z-elevations); existing LLM+CAD pipeline (Step 2) builds the parametric model with self-correction; returns identical `GenerateResponse` shape; frontend adds drag-drop upload zone + thumbnail preview in `PromptPanel` with optional prompt guidance hint; 8 tests in `test_sketch_endpoint.py` (88/88 test suite pass)
 
 ### Fixed
+- **Audit Hardening (Round 6)**:
+  - **Auth rate limiter bounding (SEC-01)**: Enforced 2,000 IP capacity cap and auto-pruning in `backend/routes/auth.py` to prevent memory exhaustion and leaks.
+  - **Exception response sanitization (SEC-02)**: Redacted internal tracebacks, PII, and filesystem paths from 502 HTTP error details in `backend/main.py`.
+  - **Constant-time admin token verification (SEC-03)**: Switched `require_admin_token` to `secrets.compare_digest` in `backend/main.py` to eliminate timing attacks.
+  - **Idempotent gallery likes (DAT-01)**: Introduced `DesignLike` model in `backend/models/project.py` and tracking in `backend/routes/gallery.py` to prevent duplicate like inflation.
+  - **On-demand CAD execution gating (REL-01)**: Gated expensive CAD mesh regeneration on `GET /api/generations/{id}` in `backend/routes/projects.py` to authenticated users and owners.
+  - **Community modification persistence (COR-01)**: Auto-creates user generation and workspace records in `backend/routes/projects.py` when modifying public designs to preserve version history.
+  - **Subprocess process-group cleanup (REL-02)**: Configured `start_new_session=True` and `os.killpg` in `backend/services/cad_runner.py` to prevent orphaned OpenCASCADE processes on Unix timeouts.
+  - **Frontend token refresh interceptor (ARC-01)**: Implemented `refresh_token` persistence and automatic 401 token refresh queue in `frontend/src/api.js`.
+  - **AsyncIO loop binding fix**: Made `CAD_EXECUTION_SEMAPHORE` loop-aware via lazy proxy and fixed event loop instantiation in `test_modify_params.py` (88/88 tests passing).
+- **Sketch vision model fallback & thinking config** — resolved `504 DEADLINE_EXCEEDED` and `400 INVALID_ARGUMENT` in `VisionService.parse_sketch` by omitting unsupported `thinking_budget=0` on flash-lite models, updating the fallback chain to modern available models (`gemini-3.5-flash-lite`, `gemini-flash-lite-latest`, `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.8-flash`, `gemini-flash-latest`), replacing sunset `gemini-2.5-flash` (404), and automatically retrying without thinking config if rejected.
 - **AST sandbox bypasses** — dunder/alias/lambda blocks + 6 adversarial tests
 - **Anonymous production compute** — 403 gate when `ENVIRONMENT==production`
 - **Artifact auth** — download ownership checks; 12-char script IDs

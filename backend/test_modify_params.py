@@ -93,12 +93,13 @@ def test_llm_service_modify_script_contract():
 
 def test_concurrent_modify_ids_are_unique(tmp_path):
     reserved = set()
-    lock = asyncio.Lock()
-
-    async def allocate():
-        return await allocate_modify_script_id("part_test", tmp_path, reserved, lock)
 
     async def run_pair():
+        lock = asyncio.Lock()
+
+        async def allocate():
+            return await allocate_modify_script_id("part_test", tmp_path, reserved, lock)
+
         return await asyncio.gather(allocate(), allocate())
 
     ids = asyncio.run(run_pair())

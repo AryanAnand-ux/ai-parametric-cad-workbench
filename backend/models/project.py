@@ -6,6 +6,7 @@ and version history for Chat-to-Modify modifications.
 """
 
 import uuid
+from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy import String, DateTime, Text, Integer, Float, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -26,7 +27,7 @@ class Project(Base):
     )
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False, default="Untitled Project")
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
@@ -35,7 +36,7 @@ class Project(Base):
     # Relationships
     owner = relationship("User", back_populates="projects")
     generations = relationship("Generation", back_populates="project", cascade="all, delete-orphan",
-                               order_by="Generation.created_at.desc()")
+                                order_by="Generation.created_at.desc()")
 
     def __repr__(self):
         return f"<Project '{self.name}' ({self.id[:8]})>"
@@ -54,23 +55,23 @@ class Generation(Base):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     script_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    part_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    part_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     python_code: Mapped[str] = mapped_column(Text, nullable=False)
-    parameters_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    mesh_info_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    mesh_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    step_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    model_used: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    generation_time_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    parameters_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    mesh_info_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    mesh_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    step_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    model_used: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    generation_time_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     self_corrections: Mapped[int] = mapped_column(Integer, default=0)
     design_mode: Mapped[str] = mapped_column(String(20), default="single_solid")
-    components_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    components_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_public: Mapped[bool] = mapped_column(default=False, index=True)
     like_count: Mapped[int] = mapped_column(Integer, default=0, index=True)
     fork_count: Mapped[int] = mapped_column(Integer, default=0, index=True)
-    tags_json: Mapped[str | None] = mapped_column(Text, nullable=True)       # JSON list of tag strings
-    forked_from: Mapped[str | None] = mapped_column(String(36), nullable=True) # parent generation id
+    tags_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # JSON list of tag strings
+    forked_from: Mapped[Optional[str]] = mapped_column(String(36), nullable=True) # parent generation id
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
 
     # Relationships
@@ -96,11 +97,11 @@ class Version(Base):
     modification_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     script_id: Mapped[str] = mapped_column(String(100), nullable=False)
     python_code: Mapped[str] = mapped_column(Text, nullable=False)
-    parameters_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    mesh_info_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    mesh_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    step_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    model_used: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    parameters_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    mesh_info_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    mesh_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    step_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    model_used: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     # Relationships
@@ -108,3 +109,18 @@ class Version(Base):
 
     def __repr__(self):
         return f"<Version v{self.version_number} of {self.generation_id[:8]}>"
+
+
+class DesignLike(Base):
+    """Tracks which user liked which design to prevent duplicate likes."""
+    __tablename__ = "design_likes"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    generation_id: Mapped[str] = mapped_column(String(36), ForeignKey("generations.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    def __repr__(self):
+        return f"<DesignLike user={self.user_id[:8]} gen={self.generation_id[:8]}>"

@@ -388,8 +388,10 @@ class VisionService:
 
         models_to_try = [
             "gemini-3.5-flash-lite",
+            "gemini-flash-lite-latest",
+            "gemini-3.6-flash",
             "gemini-3.5-flash",
-            "gemini-2.5-flash",
+            "gemini-3.8-flash",
             "gemini-flash-latest",
         ]
 
@@ -399,16 +401,33 @@ class VisionService:
         for model_name in models_to_try:
             logger.info(f"[VISION] Attempting model '{model_name}' for sketch parsing...")
             try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=[types.Content(role="user", parts=[image_part, text_part])],
-                    config=types.GenerateContentConfig(
-                        system_instruction=_VISION_SYSTEM_PROMPT,
-                        response_mime_type="application/json",
-                        temperature=0.1,
-                        thinking_config=types.ThinkingConfig(thinking_budget=0),
-                    ),
+                gen_config = types.GenerateContentConfig(
+                    system_instruction=_VISION_SYSTEM_PROMPT,
+                    response_mime_type="application/json",
+                    temperature=0.1,
                 )
+                if "lite" not in model_name.lower():
+                    gen_config.thinking_config = types.ThinkingConfig(thinking_budget=0)
+
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[types.Content(role="user", parts=[image_part, text_part])],
+                        config=gen_config,
+                    )
+                except Exception as call_err:
+                    # If thinking_config caused an INVALID_ARGUMENT error, retry without it
+                    if "INVALID_ARGUMENT" in str(call_err) and gen_config.thinking_config is not None:
+                        logger.info(f"[VISION] Retrying '{model_name}' without thinking_config...")
+                        gen_config.thinking_config = None
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=[types.Content(role="user", parts=[image_part, text_part])],
+                            config=gen_config,
+                        )
+                    else:
+                        raise call_err
+
                 raw = (response.text or "").strip()
                 if raw.startswith("```"):
                     raw = "\n".join(
