@@ -190,6 +190,10 @@ class GenerateRequest(BaseModel):
         min_length=5,
         max_length=2000,
     )
+    verify_intent: bool = Field(
+        default=False,
+        description="Enable ICLR 2025 CADCodeVerify closed-loop multi-view visual intent verification",
+    )
 
 
 class GenerateResponse(BaseModel):
@@ -217,6 +221,10 @@ class GenerateResponse(BaseModel):
     model_used: Optional[str] = Field(
         default=None,
         description="Which LLM model (tier) served the request"
+    )
+    verification_report: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="CADCodeVerify multi-view visual inspection metrics and checks",
     )
     visual_interpretation: Optional[str] = Field(
         default=None,

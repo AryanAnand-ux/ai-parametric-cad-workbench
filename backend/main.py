@@ -41,6 +41,7 @@ from services.cad_runner import CADRunner, is_safe_script_id
 from services.cleanup import ArtifactCleanupManager
 from services.llm_service import LLMService
 from services.rag_service import RAGService
+from services.cad_verifier import CADVerifier
 from services import gemini_web_client
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import create_tables, get_db
@@ -293,6 +294,7 @@ app.include_router(gallery_router)
 # Health Check
 # ---------------------------------------------------------------------------
 
+@app.get("/health")
 @app.get("/api/health")
 async def health_check():
     """Returns service health and API key configuration status."""
@@ -500,6 +502,65 @@ async def generate_part(
             }
         )
 
+    # Closed-Loop Multi-View Visual Intent Verification (CADCodeVerify - ICLR 2025)
+    verification_report = None
+    if getattr(payload, "verify_intent", False):
+        stl_path = MODELS_DIR / f"{script_id}.stl"
+        if stl_path.exists():
+            try:
+                verification_report = await asyncio.to_thread(
+                    CADVerifier.verify_mesh,
+                    prompt=payload.prompt,
+                    mesh_source=stl_path,
+                )
+                if (
+                    verification_report
+                    and not verification_report.get("is_verified", True)
+                    and verification_report.get("corrective_feedback")
+                    and self_correction_attempts < LLMService.MAX_RETRIES
+                ):
+                    self_correction_attempts += 1
+                    v_err = (
+                        "VISUAL INTENT DEFECT DETECTED BY MULTI-VIEW 3D INSPECTION:\n"
+                        f"{verification_report['corrective_feedback']}\n"
+                        "Modify the build123d script to incorporate the missing or corrected mechanical features."
+                    )
+                    logger.warning(
+                        f"[CAD-VERIFY] Visual check failed (score={verification_report.get('intent_score')}). "
+                        f"Attempting visual self-correction for script_id={script_id}..."
+                    )
+                    try:
+                        v_corrected, v_model = await asyncio.to_thread(
+                            LLMService.correct_code,
+                            user_prompt=payload.prompt,
+                            failed_code=current_code,
+                            error_traceback=v_err,
+                        )
+                        v_exec = await CADRunner.execute_script_async(
+                            script_id=script_id,
+                            python_code=v_corrected.python_code,
+                            design_mode=v_corrected.design_mode,
+                            component_names=v_corrected.components,
+                        )
+                        if v_exec.get("status") == "success" and v_exec.get("mesh_info", {}).get("is_valid", True):
+                            current_code = v_corrected.python_code
+                            dual_output = v_corrected
+                            execution_result = v_exec
+                            model_used = v_model
+                            # Re-verify after correction
+                            verification_report = await asyncio.to_thread(
+                                CADVerifier.verify_mesh,
+                                prompt=payload.prompt,
+                                mesh_source=stl_path,
+                            )
+                            logger.info(
+                                f"[CAD-VERIFY] Visual correction succeeded. New score={verification_report.get('intent_score')}"
+                            )
+                    except Exception as ve:
+                        logger.error(f"[CAD-VERIFY] Visual self-correction attempt failed: {ve}")
+            except Exception as v_outer_err:
+                logger.warning(f"[CAD-VERIFY] Visual verification pipeline failed: {v_outer_err}")
+
     gen_id = None
     # Persist to database if user is authenticated
     if current_user and db:
@@ -545,7 +606,8 @@ async def generate_part(
         mesh_info=execution_result.get("mesh_info"),
         recomputation_time_ms=execution_result.get("recomputation_time_ms"),
         self_correction_attempts=self_correction_attempts,
-        model_used=model_used
+        model_used=model_used,
+        verification_report=verification_report,
     )
 
 
@@ -666,6 +728,23 @@ async def generate_part_stream(
         yield f"data: {json.dumps({'phase': 'mesh_validation', 'message': 'Solid verified (watertight 2-manifold mesh)...', 'progress': 92})}\n\n"
         await asyncio.sleep(0.05)
 
+        # Phase 6: Multi-View Visual Intent Verification (CADCodeVerify)
+        verification_report = None
+        if getattr(payload, "verify_intent", False):
+            if await _aborted():
+                return
+            yield f"data: {json.dumps({'phase': 'visual_verification', 'message': 'Performing CADCodeVerify 4-view visual intent inspection...', 'progress': 96})}\n\n"
+            stl_path = MODELS_DIR / f"{script_id}.stl"
+            if stl_path.exists():
+                try:
+                    verification_report = await asyncio.to_thread(
+                        CADVerifier.verify_mesh,
+                        prompt=payload.prompt,
+                        mesh_source=stl_path,
+                    )
+                except Exception as v_err:
+                    logger.warning(f"[CAD-VERIFY] Streamed visual verification failed: {v_err}")
+
         gen_id = None
         # Database persistence
         if current_user and db:
@@ -711,7 +790,8 @@ async def generate_part_stream(
             "mesh_info": execution_result.get("mesh_info"),
             "recomputation_time_ms": execution_result.get("recomputation_time_ms"),
             "self_correction_attempts": self_correction_attempts,
-            "model_used": model_used
+            "model_used": model_used,
+            "verification_report": verification_report,
         }
         yield f"data: {json.dumps({'phase': 'complete', 'progress': 100, 'result': final_response})}\n\n"
 

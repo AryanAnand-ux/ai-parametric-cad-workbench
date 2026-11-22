@@ -9,6 +9,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **ICLR 2025 CADCodeVerify Visual Verification** — Integrated the closed-loop visual intent verification framework from *Generating CAD Code with Vision-Language Models for 3D Designs* (ICLR 2025). `backend/services/visual_projection.py` renders headless orthographic & isometric 3D mesh views (Top, Front, Side, Isometric) via depth-sorted polygon shading without X11/GPU. `backend/services/cad_verifier.py` uses Gemini 2.5 Flash structured outputs to evaluate functional criteria and synthesize targeted corrective feedback for visual defects (missing holes, inverted cuts, wrong aspect ratios).
+- **CADPrompt RAG Corpus Expansion** — Added 5 high-precision mechanical blueprints from the `CADPrompt` dataset (`cadprompt_split_collar`, `cadprompt_flanged_bearing_housing`, `cadprompt_star_knob`, `cadprompt_pipe_manifold`, `cadprompt_stepped_bushing`) in `backend/rag_corpus/examples_cadprompt.py`, expanding the ChromaDB vector index from 121 to 126 exemplars.
+- **Scientific 3D Geometric Benchmark Suite** — Created `backend/benchmark_geometric.py` computing Chamfer Distance (nearest-neighbor point cloud alignment) and Hausdorff Distance (maximum surface deviation) via `scipy.spatial.cKDTree`.
+- **Design Intent Telemetry & UI Controls** — Added interactive `🎯 Intent Score` badge and detailed verification dropdown in `TelemetryHUD.jsx`, plus `Auto-Verify Design Intent (CADCodeVerify)` toggle in `PromptPanel.jsx` and API schema options (`verify_intent` / `verification_report`).
 - **Share deep links** — `#model=`/`#embed=` URLs open the model directly in the workbench
 - **Refresh-token rotation** — version column + reuse detection (old token → 401)
 - **PII scrubber** — emails/phones/secrets redacted before LLM calls

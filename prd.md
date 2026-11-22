@@ -120,7 +120,7 @@ An LLM-driven pipeline converts a natural language description into a parametric
 ### 4.4 Scalability
 - CAD execution concurrency cap: `CAD_MAX_CONCURRENT_EXECUTIONS` (default: 2)
 - Execution timeout: `CAD_EXECUTION_TIMEOUT_SECONDS` (default: 60s)
-- ChromaDB RAG index: 121-document corpus, fully local (no API quota)
+- ChromaDB RAG index: 126-document corpus (including CADPrompt mechanical blueprints), fully local (no API quota)
 
 ---
 
@@ -148,8 +148,8 @@ Landing Page
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/generate` | POST | Generate new CAD model from prompt |
-| `/api/generate/stream` | POST (SSE) | Generate with staged progress events |
+| `/api/generate` | POST | Generate new CAD model from prompt (supports `verify_intent` & returns `verification_report`) |
+| `/api/generate/stream` | POST (SSE) | Generate with staged progress events (includes `visual_verification` phase) |
 | `/api/generate/sketch` | POST (multipart) | Generate new CAD model from sketch image + optional prompt |
 | `/api/recompute` | POST | Re-run script with updated parameters |
 | `/api/modify` | POST | Modify existing model via natural language |

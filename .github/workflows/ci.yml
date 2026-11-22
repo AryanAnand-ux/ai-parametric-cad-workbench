@@ -53,6 +53,8 @@ jobs:
             test_auth_projects.py \
             test_universal_archetypes.py \
             test_pipeline.py \
+            test_cad_verifier.py \
+            test_visual_projection.py \
             --tb=short -q
 
       - name: Generate test summary
@@ -69,6 +71,8 @@ jobs:
           echo "| Auth & Projects | ✅ |" >> $GITHUB_STEP_SUMMARY
           echo "| Universal Archetypes | ✅ |" >> $GITHUB_STEP_SUMMARY
           echo "| Pipeline | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| CAD Verifier | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Visual Projection | ✅ |" >> $GITHUB_STEP_SUMMARY
 
   frontend-build:
     name: Frontend Build (Node.js 22)

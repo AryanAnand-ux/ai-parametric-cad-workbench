@@ -21,7 +21,7 @@ would otherwise cost an agent a debugging session.
 ```powershell
 # backend — always use the venv interpreter, plain `python` may be the wrong one
 cd backend
-.\venv\Scripts\python.exe -m pytest -q --tb=short          # 80 tests / 14 files, ~105s
+.\venv\Scripts\python.exe -m pytest -q --tb=short          # 95 tests / 16 files, ~120s
 .\venv\Scripts\python.exe -m pytest test_ast_security.py -v # single file
 .\venv\Scripts\python.exe main.py                          # honours RELOAD env (default: no reload)
 .\venv\Scripts\python.exe -m uvicorn main:app --reload --port 8000
@@ -40,9 +40,9 @@ npm run lint       # oxlint — currently 0 errors / 0 warnings; keep it there
 - Ad-hoc scripts that `import main` must be run with the repo's `backend` on the path
   (`$env:PYTHONPATH = "D:\Projects\Minor_project\backend"`).
 - CI = `.github/workflows/ci.yml` ("CI — Full Stack Suite"): Python 3.11 + Node 22, runs on
-  push/PR touching `backend/`, `frontend/`. **CI only runs 8 of the 14 test files** — gallery,
-  quota, PII, gemini-web, modify and API-contract tests are local-only, so run the full suite
-  before claiming green. `.github/dependabot.yml` opens weekly pip/npm/actions bumps.
+  push/PR touching `backend/`, `frontend/`. **CI only runs 10 of the 16 test files** — gallery,
+  quota, PII, gemini-web, modify, sketch-endpoint, and API-contract tests are local-only, so run
+  the full suite before claiming green. `.github/dependabot.yml` opens weekly pip/npm/actions bumps.
 
 ## Gotchas that cost real time
 
@@ -92,6 +92,10 @@ npm run lint       # oxlint — currently 0 errors / 0 warnings; keep it there
 14. **SQLite is the default but not the ceiling.** `DATABASE_URL` can point at PostgreSQL
     (`asyncpg` is a dependency and `docker-compose.yml` ships a `postgres:16` service);
     concurrent writes queue under SQLite, so migration is the documented fix, not more pragmas.
+15. **CADCodeVerify visual projection needs Pillow** (`services/visual_projection.py`). The
+    renderer uses a custom PIL-based Painter's algorithm — `trimesh.save_image()` requires
+    `pyglet` (not installed). `cad_verifier.py` gracefully degrades when no Gemini API key is
+    configured (returns `is_verified=False` with a "no API keys" message).
 
 ## Working agreements
 
@@ -104,8 +108,9 @@ npm run lint       # oxlint — currently 0 errors / 0 warnings; keep it there
   `CHANGELOG.md`; finished task → `task.md`; env var → `backend/.env.example`; dependency →
   `CODEBASE_GUIDE.md`. Do not add ad-hoc markdown at the repo root — fold content into the existing
   docs.
-- Test counts in the docs drift (79 vs 80). Trust `pytest --collect-only`, and fix the docs when
-  you notice drift.
+- Test counts in the docs drift. Trust `pytest --collect-only`, and fix the docs when
+  you notice drift. As of the ICLR 2025 integration: 95 tests / 16 files locally, ~56 items / 10
+  files in CI.
 - The doc set is deliberately small: `README.md` (quickstart), `AGENTS.md` (this file), `rules.md`
   (standards), `CODEBASE_GUIDE.md` (architecture + file-by-file), `prd.md` (API contracts),
   `design.md` (UI system), `task.md` (backlog), `CHANGELOG.md` (history). `architecture.md` and

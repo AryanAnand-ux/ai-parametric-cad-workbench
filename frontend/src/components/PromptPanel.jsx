@@ -10,6 +10,8 @@ export default function PromptPanel({
   loading,
   handleGenerate,
   PRESET_CATEGORIES,
+  autoVerifyIntent,
+  setAutoVerifyIntent,
   // Sketch-to-CAD props
   onSketchFile,
   sketchFile,
@@ -143,6 +145,30 @@ export default function PromptPanel({
             </>
           )}
         </button>
+
+        {setAutoVerifyIntent && (
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              fontSize: '11px',
+              color: '#94A3B8',
+              marginTop: '6px',
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+            title="Closed-loop multi-view visual intent verification and self-correction (ICLR 2025 CADCodeVerify)"
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(autoVerifyIntent)}
+              onChange={(e) => setAutoVerifyIntent(e.target.checked)}
+              style={{ accentColor: '#38BDF8', cursor: 'pointer' }}
+            />
+            <span>Auto-Verify Design Intent (CADCodeVerify)</span>
+          </label>
+        )}
       </div>
 
       {/* ── Sketch-to-CAD Upload Zone ────────────────────────────────────── */}

@@ -11,7 +11,7 @@
  *  - Telemetry HUD: Watertight Manifold, Solid Body Count, Bounding Envelope, Volume
  */
 
-import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo, lazy, Suspense } from 'react';
 import { MATERIAL_PRESETS } from './constants/materials';
 import ParameterSlider from './components/ParameterSlider';
 import AuthModal from './components/AuthModal';
@@ -192,6 +192,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
     setShowOnboarding,
     setBackendStatus,
     setChatHistory,
+    setAutoVerifyIntent,
     dismissSketchBadge,
     updateParamValue,
     updateStream,
@@ -242,6 +243,8 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
     streamAttempts,
     visualInterpretation,
     sketchParameters,
+    verificationReport,
+    autoVerifyIntent,
   } = state;
 
   const viewerRef = useRef(null);
@@ -427,7 +430,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
           message: evt.message,
           attempts: evt.phase === 'self_correction' ? (streamAttempts + 1) : streamAttempts,
         });
-      }, controller.signal);
+      }, controller.signal, autoVerifyIntent);
       applyPartResponse(res);
     } catch (streamErr) {
       if (isAborted(streamErr)) {
@@ -436,7 +439,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
       }
       logger.warn('[SSE stream fallback to standard POST]', streamErr);
       try {
-        const res = await generatePart(activePrompt);
+        const res = await generatePart(activePrompt, autoVerifyIntent);
         if (controller.signal.aborted) return;
         applyPartResponse(res);
       } catch (err) {
@@ -1072,6 +1075,8 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
             visualInterpretation={visualInterpretation}
             sketchParameters={sketchParameters}
             onDismissSketchBadge={dismissSketchBadge}
+            autoVerifyIntent={autoVerifyIntent}
+            setAutoVerifyIntent={setAutoVerifyIntent}
           />
         )}
 
@@ -1125,6 +1130,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
                 <TelemetryHUD
                   meshInfo={meshInfo}
                   recompTime={recompTime}
+                  verificationReport={verificationReport}
                 />
                 <div className="parameter-search-row">
                   <input

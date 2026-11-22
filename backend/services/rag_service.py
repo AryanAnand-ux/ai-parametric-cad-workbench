@@ -123,7 +123,8 @@ class RAGService:
         from rag_corpus.examples_engineering import EXAMPLES as W_ENG
         from rag_corpus.examples_complex import EXAMPLES as W_CMPLX
         from rag_corpus.examples_universal import EXAMPLES as W_UNIV
-        ALL_EXAMPLES = W4 + W5 + W8 + W_ENG + W_CMPLX + W_UNIV
+        from rag_corpus.examples_cadprompt import EXAMPLES as W_CADPROMPT
+        ALL_EXAMPLES = W4 + W5 + W8 + W_ENG + W_CMPLX + W_UNIV + W_CADPROMPT
 
         collection = _get_collection()
 

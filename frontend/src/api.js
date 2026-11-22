@@ -176,8 +176,11 @@ export async function healthCheck() {
   return data;
 }
 
-export async function generatePart(prompt) {
-  const { data } = await generationApi.post('/api/generate', { prompt });
+export async function generatePart(prompt, verifyIntent = false) {
+  const { data } = await generationApi.post('/api/generate', {
+    prompt,
+    verify_intent: verifyIntent,
+  });
   return data;
 }
 
@@ -232,7 +235,7 @@ export async function generatePartFromSketch(imageFile, prompt = '') {
  * @param {AbortSignal} [signal] - Optional abort signal to cancel the stream
  * @returns {Promise<GenerateResponse>}
  */
-export async function generatePartStream(prompt, onProgress, signal) {
+export async function generatePartStream(prompt, onProgress, signal, verifyIntent = false) {
   const url = `${BASE_URL.replace(/\/+$/, '')}/api/generate/stream`;
   const token = getAuthToken();
   const headers = {
@@ -248,7 +251,7 @@ export async function generatePartStream(prompt, onProgress, signal) {
     response = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt, verify_intent: verifyIntent }),
       signal,
     });
   } catch (err) {

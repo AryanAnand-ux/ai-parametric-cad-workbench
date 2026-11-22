@@ -211,6 +211,7 @@ graph TD
 | `backend/startup_check.py` | Diagnostic script. Verifies that all required C++ CAD geometry libraries, AI clients, vector stores, and environment variables are present and functioning properly before booting. |
 | `backend/seed_gallery.py` | Showcase database seeder. Compiles and populates the community gallery with 8 foundational mechanical CAD models (spur gear, pulley, pipe elbow, enclosure, etc.) ensuring real geometry exists on day one. |
 | `backend/benchmark_eval.py` | Quality benchmarking tool. Evaluates prompt-to-CAD success rates across complex mechanical archetypes and outputs timing and manifold statistics to `benchmark_results.json`. |
+| `backend/benchmark_geometric.py` | **Scientific 3D Geometric Verification Benchmark (ICLR 2025)**. Evaluates point cloud Chamfer Distance and Hausdorff Distance between generated CAD meshes and ground-truth geometry via `scipy.spatial.cKDTree`. |
 | `backend/run_tests.py` | Test orchestrator. Runs the complete test suite (unit tests, integration tests, security sandboxes, and API endpoints) across all platforms. |
 | `backend/run.bat` & `backend/run_tests.bat` | Quick Windows execution scripts to launch the backend server or run tests in the virtual environment. |
 | `backend/pytest.ini` | Pytest configuration file. Configures asyncio mode, test discovery patterns, and filter warnings. |
@@ -243,6 +244,8 @@ graph TD
 | `backend/services/cleanup.py` | **Artifact Lifecycle Manager**. Periodically purges stale temporary files and meshes older than 24 hours while explicitly preserving permanent showcase seed models. |
 | `backend/services/gemini_web_client.py` | **Reverse-Engineered Gemini Web2API Client**. Allows the workbench to communicate directly with Gemini Web interface endpoints for zero-auth or session-cookie-backed inference when official API quotas are exceeded. |
 | `backend/services/vision_service.py` | **Gemini Vision Sketch-to-CAD Parser**. Parses uploaded mechanical sketches or engineering blueprints using strict Geometric Chain-of-Thought (Axis Mapping, Base Profile Type, Curve Rules, Feature Elevations), enforced via Pydantic `SketchVisionAnalysis` structured outputs to produce rich topological specifications. |
+| `backend/services/visual_projection.py` | **Headless Multi-View 3D Projection Engine**. Renders 4 canonical orthographic & isometric views (Top, Front, Side, Isometric) via depth-sorted polygon shading (Painter's algorithm) without X11 or GPU display dependencies. |
+| `backend/services/cad_verifier.py` | **CADCodeVerify Closed-Loop Visual Intent Verifier (ICLR 2025)**. Uses Gemini 2.5 Flash to decompose prompts into 2–5 binary functional criteria, visually checks the 4 rendered views, scores intent alignment (0.0 to 1.0), and synthesizes targeted feedback for visual self-correction. |
 
 ---
 
@@ -273,6 +276,7 @@ graph TD
 | `backend/rag_corpus/examples_universal.py` | **20 Foundational Universal Archetypes**. Contains verified, robust parametric code for shafts, gears, flanges, enclosures, pulleys, ducts, and brackets. |
 | `backend/rag_corpus/examples_complex.py` | Advanced mechanical designs: complex assemblies, multi-part mechanisms, and lofted fluid passages. |
 | `backend/rag_corpus/examples_engineering.py` | Standard industrial machine components: bearings, keyways, bolted flanges, and motor brackets. |
+| `backend/rag_corpus/examples_cadprompt.py` | **CADPrompt Mechanical Blueprints (ICLR 2025 Dataset)**. Precision mechanical components (split collars, flanged bearing blocks, star clamping knobs, fluid manifolds, stepped bushings) translated to build123d. |
 | `backend/rag_corpus/examples_week4.py` | Core geometric primitives and initial build123d test scripts. |
 | `backend/rag_corpus/examples_week5.py` | Swept profiles, rotational features, and thin-walled enclosure examples. |
 | `backend/rag_corpus/examples_week8.py` | Advanced assemblies, multi-body Booleans, and parametric filleting examples. |
