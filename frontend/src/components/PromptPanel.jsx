@@ -15,11 +15,14 @@ export default function PromptPanel({
   sketchFile,
   sketchLoading,
   handleSketchGenerate,
+  visualInterpretation,
+  sketchParameters,
+  onDismissSketchBadge,
 }) {
   const fileInputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
 
-  // --- Drag-and-drop handlers ---
+  // --- Drag-and-drop & Clipboard handlers ---
   const handleDragOver = (e) => {
     e.preventDefault();
     setDragOver(true);
@@ -31,6 +34,20 @@ export default function PromptPanel({
     const file = e.dataTransfer.files?.[0];
     if (file && /^image\/(png|jpeg|webp)$/.test(file.type)) {
       onSketchFile(file);
+    }
+  };
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          onSketchFile(file);
+          break;
+        }
+      }
     }
   };
   const handleFileChange = (e) => {
@@ -50,15 +67,53 @@ export default function PromptPanel({
         <span className="section-tag">RAG + LLM</span>
       </div>
 
-      <div className="prompt-area">
+      {/* Visual Sketch Recognition Banner */}
+      {visualInterpretation && (
+        <div className="sketch-detected-banner" role="status">
+          <div className="sketch-detected-header">
+            <div className="sketch-detected-title">
+              <span className="sketch-detected-icon">📐</span>
+              <span>Synthesized from Sketch</span>
+            </div>
+            {onDismissSketchBadge && (
+              <button
+                className="sketch-detected-dismiss"
+                onClick={onDismissSketchBadge}
+                title="Dismiss sketch banner"
+                aria-label="Dismiss sketch banner"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <div className="sketch-detected-summary">{visualInterpretation}</div>
+          {sketchParameters && Object.keys(sketchParameters).length > 0 && (
+            <div className="sketch-detected-tags">
+              {Object.entries(sketchParameters).slice(0, 6).map(([key, val]) => (
+                <span key={key} className="sketch-param-chip">
+                  {key}: {val}mm
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div
+        className={`prompt-area ${dragOver ? 'drag-over' : ''}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <textarea
           id="prompt-input"
           aria-label="Natural language CAD prompt"
           className="prompt-textarea"
-          placeholder="e.g. A mounting plate 100x60x5mm with four M4 corner clearance holes and 5mm edge fillets..."
+          placeholder="e.g. A mounting plate 100x60x5mm with four M4 corner clearance holes and 5mm edge fillets (or paste/drop sketch)..."
           value={prompt}
           disabled={sketchLoading}
           onChange={(e) => setPrompt(e.target.value)}
+          onPaste={handlePaste}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
               e.preventDefault();
@@ -82,7 +137,7 @@ export default function PromptPanel({
           ) : (
             <>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
               </svg>
               <span>Generate Parametric 3D Solid</span>
             </>
@@ -143,14 +198,14 @@ export default function PromptPanel({
               fill="none" stroke="currentColor" strokeWidth="2"
               strokeLinecap="round" strokeLinejoin="round"
             >
-              <polyline points="16 16 12 12 8 16"/>
-              <line x1="12" y1="12" x2="12" y2="21"/>
-              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+              <polyline points="16 16 12 12 8 16" />
+              <line x1="12" y1="12" x2="12" y2="21" />
+              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
             </svg>
             <span className="sketch-upload-label">
               Drop a sketch here or <u>browse</u>
             </span>
-            <span className="sketch-upload-hint">PNG · JPEG · WEBP · max 10 MB</span>
+            <span className="sketch-upload-hint">PNG · JPEG · WEBP · Ctrl+V to paste</span>
             <input
               ref={fileInputRef}
               id="sketch-file-input"
@@ -180,7 +235,7 @@ export default function PromptPanel({
               ) : (
                 <>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
                   </svg>
                   <span>Analyze Sketch &amp; Generate 3D Model</span>
                 </>

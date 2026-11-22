@@ -14,6 +14,26 @@ export default function ProjectSidebar({
   const [loading, setLoading] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [showCreateInput, setShowCreateInput] = useState(false);
+  const [draggedProjectIdx, setDraggedProjectIdx] = useState(null);
+
+  const handleDragStart = (idx) => {
+    setDraggedProjectIdx(idx);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (dropIdx) => {
+    if (draggedProjectIdx === null || draggedProjectIdx === dropIdx) return;
+    setProjects((prev) => {
+      const copy = [...prev];
+      const [moved] = copy.splice(draggedProjectIdx, 1);
+      copy.splice(dropIdx, 0, moved);
+      return copy;
+    });
+    setDraggedProjectIdx(null);
+  };
 
   const loadProjects = useCallback(async () => {
     try {
@@ -205,10 +225,15 @@ export default function ProjectSidebar({
 
         {/* Folders */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          {projects.map((proj) => (
+          {projects.map((proj, idx) => (
             <div
               key={proj.id}
+              draggable
+              onDragStart={() => handleDragStart(idx)}
+              onDragOver={handleDragOver}
+              onDrop={() => handleDrop(idx)}
               onClick={() => setSelectedProjectId(proj.id)}
+              title="Drag to reorder workspace"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -217,11 +242,14 @@ export default function ProjectSidebar({
                 borderRadius: '6px',
                 background: selectedProjectId === proj.id ? '#FFFFFF' : 'transparent',
                 border: selectedProjectId === proj.id ? '1px solid rgba(71, 64, 64, 0.18)' : '1px solid transparent',
-                cursor: 'pointer',
+                cursor: 'grab',
+                opacity: draggedProjectIdx === idx ? 0.4 : 1,
                 boxShadow: selectedProjectId === proj.id ? '0 1px 4px rgba(71, 64, 64, 0.06)' : 'none',
+                transition: 'opacity 0.15s ease',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                <span style={{ fontSize: '11px', color: '#99908F', cursor: 'grab' }} aria-hidden="true">⋮⋮</span>
                 <span style={{ fontSize: '13px' }}>📂</span>
                 <span style={{ fontSize: '12px', fontWeight: selectedProjectId === proj.id ? 600 : 500, color: '#474040', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
                   {proj.name}

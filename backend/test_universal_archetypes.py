@@ -7,6 +7,7 @@ Tests for Universal CAD Archetypes:
 """
 
 import ast
+import os
 import pytest
 from services.llm_service import _detect_cad_archetype
 from services.rag_service import RAGService
@@ -110,3 +111,23 @@ def test_execute_electronics_enclosure_geometry(tmp_path):
     bb = part.part.bounding_box()
     assert abs(bb.size.X - 120.0) < 0.5
     assert abs(bb.size.Y - 80.0) < 0.5
+
+
+@pytest.mark.skipif(
+    os.getenv("RUN_LIVE_LLM_BENCHMARK", "").lower() not in ("true", "1", "yes"),
+    reason="Live LLM tests are CI-optional. Enable with RUN_LIVE_LLM_BENCHMARK=true.",
+)
+def test_all_20_archetype_prompts_live_llm():
+    """
+    CI-Optional live benchmark: feeds prompts for all 20 universal archetypes through
+    LLMService and verifies valid AST, PARAMS, and safety validation.
+    """
+    from services.llm_service import LLMService
+
+    for ex in UNIV_EXAMPLES:
+        prompt = ex["description"]
+        dual_output, _ = LLMService.generate_dual_output(prompt)
+        assert dual_output is not None
+        assert "PARAMS" in dual_output.python_code
+        is_safe, reason = validate_script_safety(dual_output.python_code)
+        assert is_safe, f"Generated script for '{ex['id']}' failed safety: {reason}"

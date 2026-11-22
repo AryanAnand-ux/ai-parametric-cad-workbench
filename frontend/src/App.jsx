@@ -99,14 +99,65 @@ const PRESET_CATEGORIES = [
   }
 ];
 
-const QUICK_MODIFICATIONS = [
-  'Make walls 2mm thicker',
-  'Add 4x M3 corner mounting holes',
-  'Add 3mm fillets to all vertical edges',
-  'Increase overall length by 20mm',
-  'Add central 15mm bore hole',
-  'Hollow out interior with 3mm shell'
-];
+const getSuggestedPrompts = (partName) => {
+  const name = (partName || '').toLowerCase();
+  if (name.includes('gear')) {
+    return [
+      'Increase tooth count by 4',
+      'Add a 6mm keyway slot to bore',
+      'Hollow web with 5 circular lightening cutouts',
+      'Increase face width by 5mm',
+    ];
+  }
+  if (name.includes('shaft')) {
+    return [
+      'Add snap ring circlip groove at step transition',
+      'Add standard ANSI keyway to drive section',
+      'Add 2mm 45° chamfers to all shaft ends',
+      'Increase bearing seat diameter by 5mm',
+    ];
+  }
+  if (name.includes('bracket') || name.includes('angle')) {
+    return [
+      'Add a 45° triangular stiffener gusset rib',
+      'Increase base thickness by 3mm for stiffness',
+      'Convert round mounting holes to slotted holes',
+      'Add 4mm fillet to inside corner radius',
+    ];
+  }
+  if (name.includes('enclosure') || name.includes('box')) {
+    return [
+      'Add 4x interior screw standoffs for PCB mount',
+      'Add ventilation cooling slots on side walls',
+      'Add 2mm snap-fit lip around rim',
+      'Increase wall thickness to 3mm for durability',
+    ];
+  }
+  if (name.includes('pipe') || name.includes('elbow') || name.includes('duct')) {
+    return [
+      'Add 4-bolt circular mounting flanges at both ends',
+      'Increase wall thickness by 1.5mm for pressure rating',
+      'Change bend angle to 45 degrees',
+      'Add interior aerodynamic guide vane',
+    ];
+  }
+  if (name.includes('pulley')) {
+    return [
+      'Add second V-belt groove for dual drive',
+      'Add 5mm set-screw hole on hub collar',
+      'Add lightweight spoke cutouts to wheel body',
+      'Increase pitch diameter by 20mm',
+    ];
+  }
+  return [
+    'Make walls 2mm thicker',
+    'Add 4x M3 corner mounting holes',
+    'Add 3mm fillets to all vertical edges',
+    'Increase overall length by 20mm',
+    'Add central 15mm bore hole',
+    'Hollow out interior with 3mm shell',
+  ];
+};
 
 export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
   const {
@@ -141,6 +192,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
     setShowOnboarding,
     setBackendStatus,
     setChatHistory,
+    dismissSketchBadge,
     updateParamValue,
     updateStream,
   } = useCADWorkbench();
@@ -188,6 +240,8 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
     streamProgress,
     streamMessage,
     streamAttempts,
+    visualInterpretation,
+    sketchParameters,
   } = state;
 
   const viewerRef = useRef(null);
@@ -208,6 +262,73 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
   // Sketch-to-CAD state
   const [sketchFile, setSketchFile] = useState(null);
   const [sketchLoading, setSketchLoading] = useState(false);
+
+  // Theme state: light (Atelier Cream) / dark (Atelier Dark)
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('cad_theme') || 'light';
+    } catch {
+      return 'light';
+    }
+  });
+  const [groupParameters, setGroupParameters] = useState(true);
+  const [sectionCut, setSectionCut] = useState(false);
+
+  useEffect(() => {
+    try {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('cad_theme', theme);
+    } catch {
+      // Ignore localStorage access errors
+    }
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  }, []);
+
+  const categorizeParam = useCallback((p) => {
+    if (p.category) return p.category;
+    const str = `${p.name} ${p.label}`.toLowerCase();
+    if (/(tolerance|clearance|offset|gap|allowance|margin|backlash|fit|play|draft)/i.test(str)) {
+      return 'Tolerances & Fits';
+    }
+    if (/(hole|teeth|tooth|boss|rib|fillet|chamfer|slot|groove|keyway|cutout|fin|flange|count|num_|pin|post|spoke)/i.test(str)) {
+      return 'Features & Details';
+    }
+    if (/(length|width|height|depth|thickness|radius|diameter|size|outer|inner|span|pitch|dist|dimension|wall)/i.test(str)) {
+      return 'Primary Dimensions';
+    }
+    return 'General Parameters';
+  }, []);
+
+  const filteredParameters = useMemo(() => {
+    return parameters.filter((p) =>
+      `${p.label} ${p.name}`.toLowerCase().includes(parameterSearch.toLowerCase())
+    );
+  }, [parameters, parameterSearch]);
+
+  const groupedParameters = useMemo(() => {
+    if (!groupParameters) return { 'All Parameters': filteredParameters };
+    const groups = {
+      'Primary Dimensions': [],
+      'Features & Details': [],
+      'Tolerances & Fits': [],
+      'General Parameters': [],
+    };
+    filteredParameters.forEach((p) => {
+      const cat = categorizeParam(p);
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(p);
+    });
+    return Object.fromEntries(
+      Object.entries(groups).filter(([, list]) => list.length > 0)
+    );
+  }, [filteredParameters, groupParameters, categorizeParam]);
+
+  const suggestedModifications = useMemo(() => {
+    return getSuggestedPrompts(partName);
+  }, [partName]);
 
   // Analyze a mechanical sketch image via Gemini Vision → CAD pipeline
   const handleSketchGenerate = useCallback(async () => {
@@ -552,9 +673,12 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
   };
 
   const handleGenerateRef = useRef(handleGenerate);
-  handleGenerateRef.current = handleGenerate;
   const handleForceRecomputeRef = useRef(handleForceRecompute);
-  handleForceRecomputeRef.current = handleForceRecompute;
+
+  useEffect(() => {
+    handleGenerateRef.current = handleGenerate;
+    handleForceRecomputeRef.current = handleForceRecompute;
+  });
 
   // Global keyboard shortcuts — only fire when no input/textarea/select is focused
   useEffect(() => {
@@ -774,6 +898,32 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
             <span className="header-btn-text">Workspaces</span>
           </button>
 
+          {/* Theme Toggle (Dark / Light) */}
+          <button
+            className="toolbar-btn header-action-btn header-icon-only-btn"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to Atelier Light' : 'Switch to Atelier Dark'}
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="5"/>
+                <line x1="12" y1="1" x2="12" y2="3"/>
+                <line x1="12" y1="21" x2="12" y2="23"/>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                <line x1="1" y1="12" x2="3" y2="12"/>
+                <line x1="21" y1="12" x2="23" y2="12"/>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              </svg>
+            )}
+          </button>
+
           {/* Guided Tour Trigger (clean icon button) */}
           <button
             className="toolbar-btn header-action-btn header-icon-only-btn"
@@ -919,6 +1069,9 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
             sketchFile={sketchFile}
             sketchLoading={sketchLoading}
             handleSketchGenerate={handleSketchGenerate}
+            visualInterpretation={visualInterpretation}
+            sketchParameters={sketchParameters}
+            onDismissSketchBadge={dismissSketchBadge}
           />
         )}
 
@@ -982,19 +1135,39 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
                     value={parameterSearch}
                     onChange={(event) => setParameterSearch(event.target.value)}
                   />
+                  <button
+                    type="button"
+                    className={`param-group-toggle-btn ${groupParameters ? 'active' : ''}`}
+                    onClick={() => setGroupParameters((prev) => !prev)}
+                    title={groupParameters ? 'Switch to flat parameter list' : 'Group parameters by category'}
+                  >
+                    {groupParameters ? 'Grouped' : 'Flat'}
+                  </button>
                   <span className="parameter-match-count">
-                    {parameters.filter((p) => `${p.label} ${p.name}`.toLowerCase().includes(parameterSearch.toLowerCase())).length}/{parameters.length}
+                    {filteredParameters.length}/{parameters.length}
                   </span>
                 </div>
                 <div className="sliders-list">
-                {parameters.filter((p) => `${p.label} ${p.name}`.toLowerCase().includes(parameterSearch.toLowerCase())).map((p) => (
-                  <ParameterSlider
-                    key={p.name}
-                    param={p}
-                    value={paramValues[p.name] ?? p.default}
-                    onChange={handleParamChange}
-                  />
-                ))}
+                  {Object.entries(groupedParameters).map(([groupName, groupItems]) => (
+                    <div key={groupName} className="parameter-group-section">
+                      {groupParameters && Object.keys(groupedParameters).length > 1 && (
+                        <div className="parameter-group-header">
+                          <span className="parameter-group-title">{groupName}</span>
+                          <span className="parameter-group-badge">{groupItems.length}</span>
+                        </div>
+                      )}
+                      <div className="parameter-group-items">
+                        {groupItems.map((p) => (
+                          <ParameterSlider
+                            key={p.name}
+                            param={p}
+                            value={paramValues[p.name] ?? p.default}
+                            onChange={handleParamChange}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </>
             )}
@@ -1004,7 +1177,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
               <div className="slider-bottom-quick-bar">
                 <div className="quick-bar-label">Quick Actions:</div>
                 <div className="quick-mods-bar">
-                  {QUICK_MODIFICATIONS.slice(0, 3).map((qm, i) => (
+                  {suggestedModifications.slice(0, 3).map((qm, i) => (
                     <button
                       key={i}
                       className="quick-mod-btn"
@@ -1039,7 +1212,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
           setModifyPrompt={setModifyPrompt}
           modifying={modifying}
           handleModify={handleModify}
-          QUICK_MODIFICATIONS={QUICK_MODIFICATIONS}
+          QUICK_MODIFICATIONS={suggestedModifications}
         />
       </aside>
 
@@ -1062,6 +1235,7 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
             showAxes={showAxes}
             showGrid={showGrid}
             showDimensions={showDimensions}
+            sectionCut={sectionCut}
             onCoordsUpdate={setCursorCoords}
             />
           </Suspense>
@@ -1134,6 +1308,13 @@ export default function App({ onGoHome, onGoToGallery, initialGenerationId }) {
               title="Toggle Shaded Feature Edges"
             >
               EDGES
+            </button>
+            <button
+              className={`autocad-chip ${sectionCut ? 'active' : ''}`}
+              onClick={() => setSectionCut(!sectionCut)}
+              title="Toggle 3D Section Cut Plane (Slice through internal geometry)"
+            >
+              SECTION
             </button>
             <span className="autocad-chip active">ORTHO</span>
             <span className="autocad-chip active">OSNAP</span>

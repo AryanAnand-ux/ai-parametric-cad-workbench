@@ -228,7 +228,8 @@ def _extract_params_dict(text: str) -> Dict[str, float]:
     return result
 
 
-def _synthesize_derived_prompt(
+def _enrich_derived_prompt(
+    derived_prompt: str,
     visual_interpretation: str,
     identified_parameters: Dict[str, float],
     axis_mapping: str = "",
@@ -238,31 +239,113 @@ def _synthesize_derived_prompt(
     structural_specification: str = "",
 ) -> str:
     """
-    Construct a complete derived_prompt combining all geometric analysis fields.
-    Guarantees downstream CAD generator has unambiguous instructions.
+    Construct a complete, unambiguous derived_prompt combining all geometric analysis fields.
+    Guarantees downstream CAD generator explicitly exposes all discovered dimensions in PARAMS
+    and follows strict curve and coordinate rules.
     """
     parts = []
-    base = visual_interpretation.strip() or "Parametric mechanical part"
-    parts.append(base)
+    base_desc = visual_interpretation.strip() or derived_prompt.strip() or "Parametric mechanical CAD solid"
+    parts.append(f"Design a precision mechanical solid model: {base_desc}.")
 
     if structural_specification and structural_specification.strip():
-        parts.append(f"Structure: {structural_specification.strip()}")
+        parts.append(f"Structure & Steps: {structural_specification.strip()}")
     if axis_mapping and axis_mapping.strip():
-        parts.append(f"Coordinate axes: {axis_mapping.strip()}")
+        parts.append(f"Coordinate Orientation: {axis_mapping.strip()}")
     if base_profile_strategy and base_profile_strategy.strip():
-        parts.append(f"Base profile: {base_profile_strategy.strip()}")
+        parts.append(f"Base Profile Strategy: {base_profile_strategy.strip()}")
     if curve_strategy and curve_strategy.strip():
-        parts.append(f"Curves & Arches: {curve_strategy.strip()}")
+        parts.append(f"Curves & Profiles: {curve_strategy.strip()}")
     if feature_elevations and feature_elevations.strip():
-        parts.append(f"Z-Elevations: {feature_elevations.strip()}")
-    if identified_parameters:
-        dims = ", ".join(
-            f"{k.replace('_', ' ')} {v}mm" for k, v in list(identified_parameters.items())[:12]
-        )
-        parts.append(f"Dimensions: {dims}.")
+        parts.append(f"Feature Elevations: {feature_elevations.strip()}")
 
-    parts.append("Generate a precise parametric build123d solid model.")
+    # Strict dimensional enforcement: mandate discovered parameters in the PARAMS dict
+    if identified_parameters:
+        dims_list = ", ".join(f"'{k}': {v}" for k, v in list(identified_parameters.items())[:16])
+        parts.append(
+            f"MANDATORY SKETCH PARAMETERS: You MUST expose these discovered dimensions in the PARAMS dictionary with exact defaults: {{{dims_list}}}."
+        )
+
+    parts.append("Ensure 100% watertight single-solid B-Rep topology using build123d.")
     return " ".join(parts)
+
+
+def _synthesize_derived_prompt(
+    visual_interpretation: str,
+    identified_parameters: Dict[str, float],
+    axis_mapping: str = "",
+    base_profile_strategy: str = "",
+    curve_strategy: str = "",
+    feature_elevations: str = "",
+    structural_specification: str = "",
+) -> str:
+    """Fallback synthesizer when derived_prompt is absent."""
+    return _enrich_derived_prompt(
+        "",
+        visual_interpretation,
+        identified_parameters,
+        axis_mapping=axis_mapping,
+        base_profile_strategy=base_profile_strategy,
+        curve_strategy=curve_strategy,
+        feature_elevations=feature_elevations,
+        structural_specification=structural_specification,
+    )
+
+
+def _parse_with_groq(
+    image_bytes: bytes,
+    mime_type: str,
+    user_prompt: Optional[str] = None,
+) -> Optional[dict]:
+    """
+    Fallback vision parser using Groq Vision API (llama-3.2-11b-vision-preview).
+    Provides ultra-fast (<2s) recovery when Gemini API keys are absent or rate-limited.
+    """
+    import base64
+    from config import GROQ_API_KEY
+    if not GROQ_API_KEY:
+        return None
+
+    try:
+        from groq import Groq
+        client = Groq(api_key=GROQ_API_KEY)
+        b64_img = base64.b64encode(image_bytes).decode("utf-8")
+        data_url = f"data:{mime_type};base64,{b64_img}"
+
+        text_content = _VISION_DEFAULT_USER_TEXT
+        if user_prompt and user_prompt.strip():
+            text_content += f"\nUser clarification / requirements: {user_prompt.strip()}"
+
+        logger.info("[VISION] Attempting Groq Vision fallback (llama-3.2-11b-vision-preview)...")
+        completion = client.chat.completions.create(
+            model="llama-3.2-11b-vision-preview",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                f"{_VISION_SYSTEM_PROMPT}\n\n{text_content}\n"
+                                "Respond strictly with valid JSON conforming to the requested schema."
+                            ),
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": data_url},
+                        },
+                    ],
+                }
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+        )
+        raw = completion.choices[0].message.content or ""
+        data = _robust_parse_vision(raw)
+        logger.info("[VISION] Successfully parsed sketch using Groq Vision fallback")
+        return data
+    except Exception as e:
+        logger.warning(f"[VISION] Groq Vision fallback failed: {e}")
+        return None
 
 
 def _robust_parse_vision(raw: str) -> dict:
@@ -359,70 +442,80 @@ class VisionService:
             RuntimeError: If GEMINI_API_KEY is not configured.
             ValueError:   If the Vision model returns an unrecoverable response.
         """
-        from config import GEMINI_API_KEY
-        from google import genai
-        from google.genai import types
+        from config import GEMINI_API_KEY, GROQ_API_KEY
 
-        if not GEMINI_API_KEY:
+        if not GEMINI_API_KEY and not GROQ_API_KEY:
             raise RuntimeError(
-                "GEMINI_API_KEY is required for sketch vision parsing. "
+                "GEMINI_API_KEY or GROQ_API_KEY is required for sketch vision parsing. "
                 "Set it in backend/.env."
             )
-
-        client = genai.Client(
-            api_key=GEMINI_API_KEY,
-            http_options={"timeout": 90_000},
-        )
-
-        image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
-
-        text_content = _VISION_DEFAULT_USER_TEXT
-        if user_prompt and user_prompt.strip():
-            text_content += f"\nUser clarification / requirements: {user_prompt.strip()}"
-        text_part = types.Part.from_text(text=text_content)
-
-        logger.info(
-            f"[VISION] Sending {len(image_bytes):,} byte {mime_type} image to Gemini Vision "
-            f"(user_prompt={bool(user_prompt)})..."
-        )
-
-        models_to_try = [
-            "gemini-3.5-flash-lite",
-            "gemini-3.5-flash",
-            "gemini-2.5-flash",
-            "gemini-flash-latest",
-        ]
 
         data = None
         last_err = None
 
-        for model_name in models_to_try:
-            logger.info(f"[VISION] Attempting model '{model_name}' for sketch parsing...")
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=[types.Content(role="user", parts=[image_part, text_part])],
-                    config=types.GenerateContentConfig(
-                        system_instruction=_VISION_SYSTEM_PROMPT,
-                        response_mime_type="application/json",
-                        temperature=0.1,
-                        thinking_config=types.ThinkingConfig(thinking_budget=0),
-                    ),
-                )
-                raw = (response.text or "").strip()
-                if raw.startswith("```"):
-                    raw = "\n".join(
-                        line for line in raw.splitlines()
-                        if not line.strip().startswith("```")
-                    ).strip()
-                data = _robust_parse_vision(raw)
-                logger.info(f"[VISION] Successfully parsed sketch using '{model_name}'")
-                break
-            except Exception as err:
-                logger.warning(
-                    f"[VISION] Model '{model_name}' failed ({err}) — attempting next fallback"
-                )
-                last_err = err
+        # ── Tier 1: Gemini Vision Cascade ─────────────────────────────────
+        if GEMINI_API_KEY:
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(
+                api_key=GEMINI_API_KEY,
+                http_options={"timeout": 90_000},
+            )
+
+            image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+
+            text_content = _VISION_DEFAULT_USER_TEXT
+            if user_prompt and user_prompt.strip():
+                text_content += f"\nUser clarification / requirements: {user_prompt.strip()}"
+            text_part = types.Part.from_text(text=text_content)
+
+            logger.info(
+                f"[VISION] Sending {len(image_bytes):,} byte {mime_type} image to Gemini Vision "
+                f"(user_prompt={bool(user_prompt)})..."
+            )
+
+            models_to_try = [
+                "gemini-2.5-flash",
+                "gemini-3.5-flash-lite",
+                "gemini-3.5-flash",
+                "gemini-flash-latest",
+                "gemini-2.0-flash",
+            ]
+
+            for model_name in models_to_try:
+                logger.info(f"[VISION] Attempting model '{model_name}' for sketch parsing...")
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[types.Content(role="user", parts=[image_part, text_part])],
+                        config=types.GenerateContentConfig(
+                            system_instruction=_VISION_SYSTEM_PROMPT,
+                            response_mime_type="application/json",
+                            temperature=0.1,
+                            thinking_config=types.ThinkingConfig(thinking_budget=0),
+                            response_schema=SketchVisionAnalysis,
+                        ),
+                    )
+                    raw = (response.text or "").strip()
+                    if raw.startswith("```"):
+                        raw = "\n".join(
+                            line for line in raw.splitlines()
+                            if not line.strip().startswith("```")
+                        ).strip()
+                    data = _robust_parse_vision(raw)
+                    logger.info(f"[VISION] Successfully parsed sketch using '{model_name}'")
+                    break
+                except Exception as err:
+                    logger.warning(
+                        f"[VISION] Model '{model_name}' failed ({err}) — attempting next fallback"
+                    )
+                    last_err = err
+
+        # ── Tier 2: Groq Vision Fallback ──────────────────────────────────
+        if data is None and GROQ_API_KEY:
+            logger.info("[VISION] Falling back to Groq Vision engine...")
+            data = _parse_with_groq(image_bytes, mime_type, user_prompt)
 
         if data is None:
             raise ValueError(f"All vision models failed. Last error: {last_err}")
@@ -442,16 +535,17 @@ class VisionService:
             structural_specification=str(data.get("structural_specification", "")).strip(),
         )
 
-        if not parsed.derived_prompt:
-            parsed.derived_prompt = _synthesize_derived_prompt(
-                parsed.visual_interpretation,
-                parsed.identified_parameters,
-                axis_mapping=parsed.axis_mapping,
-                base_profile_strategy=parsed.base_profile_strategy,
-                curve_strategy=parsed.curve_strategy,
-                feature_elevations=parsed.feature_elevations,
-                structural_specification=parsed.structural_specification,
-            )
+        # Guarantee full geometric enrichment and parameter injection
+        parsed.derived_prompt = _enrich_derived_prompt(
+            parsed.derived_prompt,
+            parsed.visual_interpretation,
+            parsed.identified_parameters,
+            axis_mapping=parsed.axis_mapping,
+            base_profile_strategy=parsed.base_profile_strategy,
+            curve_strategy=parsed.curve_strategy,
+            feature_elevations=parsed.feature_elevations,
+            structural_specification=parsed.structural_specification,
+        )
 
         if not parsed.derived_prompt:
             raise ValueError(

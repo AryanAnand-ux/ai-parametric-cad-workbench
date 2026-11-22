@@ -206,6 +206,7 @@ graph TD
 | `backend/main.py` | **Main application entrypoint**. Initializes the FastAPI app, manages application lifespan (creating database tables and checking RAG status), configures CORS, mounts routers, serves generated 3D assets (`/static/models/...`) with on-demand regeneration, and houses the primary `/api/generate` and `/api/generate/stream` endpoints. |
 | `backend/config.py` | Centralized environment and configuration manager. Safely reads `.env` variables (ports, hosts, API keys, JWT secrets, database connection URLs, concurrency semaphores, and directory paths) with fallback defaults. |
 | `backend/database.py` | SQLAlchemy async database layer. Configures the database engine (SQLite with WAL mode by default, PostgreSQL-compatible), session factories, and runs automatic startup schema migrations. |
+| `backend/alembic.ini` & `backend/alembic/` | Alembic database migration environment. Handles async schema versioning, autogenerate migrations, and database schema upgrades across SQLite and PostgreSQL. |
 | `backend/schemas.py` | Pydantic data schemas (v2). Defines strict request and response models for generation, recomputation, modification, telemetry, parameters, and version history. |
 | `backend/startup_check.py` | Diagnostic script. Verifies that all required C++ CAD geometry libraries, AI clients, vector stores, and environment variables are present and functioning properly before booting. |
 | `backend/seed_gallery.py` | Showcase database seeder. Compiles and populates the community gallery with 8 foundational mechanical CAD models (spur gear, pulley, pipe elbow, enclosure, etc.) ensuring real geometry exists on day one. |
@@ -338,18 +339,18 @@ graph TD
 
 | File | Exact Role & Responsibilities |
 |---|---|
-| `frontend/src/components/Viewer3D.jsx` | **Interactive 3D WebGL Viewport**. Powered by `@react-three/fiber` and Three.js. Renders STL meshes, shaded wireframe edges, dimensional bounding boxes, coordinate axes, and lighting. |
+| `frontend/src/components/Viewer3D.jsx` | **Interactive 3D WebGL Viewport**. Powered by `@react-three/fiber` and Three.js. Renders STL meshes, shaded wireframe edges, dimensional bounding boxes, coordinate axes, lighting, and interactive 3D section cut clipping planes. |
 | `frontend/src/components/ParameterSlider.jsx` | **Parametric Slider Controller**. Displays numeric inputs and range sliders for part dimensions. Debounces updates and triggers sub-200ms kernel recomputations. |
 | `frontend/src/components/ChatModifyPanel.jsx` | **Conversational Modification Interface**. Chat interface allowing users to refine their model in natural language, with quick engineering modification presets. |
-| `frontend/src/components/PromptPanel.jsx` | **Natural Language & Sketch Prompt Input**. Primary text entry panel with generate trigger, generation status badges, quick-start prompt categories, and drag-and-drop Sketch-to-CAD upload zone with optional prompt guidance. |
+| `frontend/src/components/PromptPanel.jsx` | **Natural Language & Sketch Prompt Input**. Primary text entry panel with generate trigger, generation status badges, quick-start prompt categories, drag-and-drop & clipboard paste (`Ctrl+V`) Sketch-to-CAD upload zone with optional prompt guidance, and visual synthesis recognition banner. |
 | `frontend/src/components/TelemetryHUD.jsx` | **Engineering Telemetry Overlay**. Floating viewport HUD displaying physical metrics: watertightness status, body count, volume ($mm^3$), and bounding envelope dimensions. |
 | `frontend/src/components/ViewportToolbar.jsx` | **Viewport Control Bar**. Floating toolbar providing camera preset toggles (Top, Front, Side, Isometric), PBR material selection, and visual style modes (shaded edges, wireframe). |
 | `frontend/src/components/ModelThumbnail.jsx` | **Vector Blueprint Thumbnail Generator**. Renders interactive CAD archetype diagrams with technical grid overlays, measurement indicators, and material badges. |
 | `frontend/src/components/OnboardingTour.jsx` | **Interactive User Guided Tour**. 6-step walkthrough introducing new users to prompt synthesis, 3D controls, sliders, conversational revisions, and CNC exports. |
-| `frontend/src/components/ProjectSidebar.jsx` | **Workspace Drawer**. Collapsible sidebar showing user project folders, saved generations, and version history. |
+| `frontend/src/components/ProjectSidebar.jsx` | **Workspace Drawer**. Collapsible sidebar showing user project folders with drag-and-drop reordering, saved generations, and version history. |
 | `frontend/src/components/ShareModal.jsx` | **Sharing & Embed Modal**. Generates direct deep links (`#model=<id>`) and embeddable iframe code snippets. |
 | `frontend/src/components/AuthModal.jsx` | **Authentication Modal**. Handles user login and account registration with validation and error surfacing. |
-| `frontend/src/components/CodeInspectorModal.jsx` | **Python Code Inspector**. Modal allowing engineers to view, inspect, and copy the raw `build123d` Python script generated by the AI. |
+| `frontend/src/components/CodeInspectorModal.jsx` | **Python Code Inspector**. Modal allowing engineers to view, inspect, and copy the raw `build123d` Python script generated by the AI, featuring full Prism.js syntax highlighting with custom dark palette tokens. |
 | `frontend/src/components/GenerationProgress.jsx` | **Multi-Stage Progress Indicator**. Visual indicator showing real-time SSE progress through the 4 stages: RAG retrieval, LLM synthesis, kernel compilation, and mesh export. |
 | `frontend/src/components/ErrorBanner.jsx` | **Error Notification Banner**. Inline alert banner for network, syntax, or server error notifications. |
 

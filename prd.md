@@ -84,10 +84,11 @@ An LLM-driven pipeline converts a natural language description into a parametric
 - `Z` — Undo to previous model topology snapshot
 
 ### 3.9 Sketch-to-CAD (Multimodal Input)
-- Drag-and-drop or upload mechanical drawings or hand-drawn sketches (PNG, JPEG, WEBP up to 10 MB)
-- Optional natural language guidance from prompt box attached to upload for multi-view selection or dimensions
-- Gemini Vision parses image via Strict Geometric Chain-of-Thought (Axis Mapping, Base Profile Strategy, Curve Rules forbidding box-minus-box for arches, Feature Z-Elevations)
-- Pydantic structured output (`SketchVisionAnalysis`) enforces 100% valid JSON responses
+- Drag-and-drop, browse, or **clipboard paste (`Ctrl+V`)** mechanical drawings or hand-drawn sketches (PNG, JPEG, WEBP up to 10 MB)
+- Multi-provider vision engine: Gemini Vision (2.5-flash, 3.5-flash-lite, 3.5-flash) with automatic ultra-fast **Groq Vision** (`llama-3.2-11b-vision-preview`) fallback
+- Strict Geometric Chain-of-Thought (Axis Mapping, Base Profile Strategy, Curve Rules forbidding box-minus-box for arches, Feature Z-Elevations) enforced via Pydantic `SketchVisionAnalysis`
+- **Mandatory Parameter Enforcement**: Discovered numeric dimensions from the sketch are injected into the downstream prompt synthesis as required defaults in the `PARAMS` dictionary
+- Response returns `visual_interpretation` and `sketch_parameters` rendered in an interactive synthesis banner with dimension tags
 - Enriched topological specification feeds directly into build123d generation, RAG archetypes, and CADRunner sandbox with self-correction
 
 ---
@@ -187,6 +188,6 @@ Landing Page
 |-----|--------|
 | Generation success rate | 85%+ |
 | Recompute success rate | 95%+ |
-| Test suite pass rate | 80/80 (100%) |
+| Test suite pass rate | 88/88 (100%) |
 | Benchmark weekly CI pass | 85%+ prompt success |
 | User retention (session >5 min) | 40%+ |

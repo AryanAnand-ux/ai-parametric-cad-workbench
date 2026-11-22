@@ -28,7 +28,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from config import (
-    BASE_DIR, TEMP_DIR, MODELS_DIR, PORT, HOST, GEMINI_API_KEY, GEMINI_WEB_ENABLED,
+    BASE_DIR, TEMP_DIR, MODELS_DIR, PORT, HOST, GEMINI_API_KEY, GROQ_API_KEY, GEMINI_WEB_ENABLED,
     ADMIN_TOKEN, ALLOWED_ORIGINS, RELOAD, ENVIRONMENT, RAG_BUILD_ON_STARTUP,
     JWT_SECRET_KEY,
 )
@@ -758,10 +758,10 @@ async def generate_from_sketch(
             status_code=403,
             detail="Authentication required. Production compute requires login.",
         )
-    if not GEMINI_API_KEY:
+    if not GEMINI_API_KEY and not GROQ_API_KEY:
         raise HTTPException(
             status_code=503,
-            detail="Sketch parsing requires GEMINI_API_KEY — not configured on this server.",
+            detail="Sketch parsing requires GEMINI_API_KEY (or GROQ_API_KEY) — not configured on this server.",
         )
 
     # Rate limit + quota shared with /api/generate
@@ -955,6 +955,8 @@ async def generate_from_sketch(
         recomputation_time_ms=execution_result.get("recomputation_time_ms"),
         self_correction_attempts=self_correction_attempts,
         model_used=model_used,
+        visual_interpretation=parsed.visual_interpretation,
+        sketch_parameters=parsed.identified_parameters,
     )
 
 

@@ -55,6 +55,18 @@ The workbench follows an **engineering-first aesthetic** — precision, clarity,
 | `midnight_blue` | `#1A2030` | Dark presentation mode |
 | `forest_floor` | `#2A3020` | Deep green |
 
+### 2.4 Dark Mode Atelier Palette (`[data-theme="dark"]`)
+```css
+--bg-primary:    #161616;  /* Deep charcoal workspace canvas */
+--bg-secondary:  #202020;  /* Panel and toolbar background */
+--bg-card:       #262626;  /* Elevated card surface */
+--bg-input:      #1C1C1C;  /* Text input fill */
+--text-primary:  #F5F5F3;  /* High-contrast crisp text */
+--text-secondary:#B5AFA9;  /* Dimmed secondary text */
+--text-dim:      #827C76;  /* Muted metadata and units */
+--border-color:  rgba(255, 255, 255, 0.12);
+```
+
 ---
 
 ## 3. Typography

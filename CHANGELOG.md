@@ -14,6 +14,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **PII scrubber** — emails/phones/secrets redacted before LLM calls
 - **SEO + nginx hardening** — OG/Twitter meta, gzip, asset caching, security headers
 - **Sketch-to-CAD** — `POST /api/generate/sketch` accepts a PNG/JPEG/WEBP mechanical sketch image + optional natural language prompt; Gemini Vision (Step 1) performs strict Geometric Chain-of-Thought (Axis Mapping, Base Profile Type, Curve Rules, Feature Elevations), enforced via Pydantic `SketchVisionAnalysis` structured outputs (`response_schema`) to eliminate JSON truncation/syntax issues; `BUILD123D_SYSTEM_PROMPT` enforces Rule 16 (forbidding box-minus-box boolean subtraction for arches and mandating exact feature Z-elevations); existing LLM+CAD pipeline (Step 2) builds the parametric model with self-correction; returns identical `GenerateResponse` shape; frontend adds drag-drop upload zone + thumbnail preview in `PromptPanel` with optional prompt guidance hint; 8 tests in `test_sketch_endpoint.py` (88/88 test suite pass)
+- **Sketch-to-CAD Enhancements** — Multi-provider vision engine (Gemini Vision with Groq Vision `llama-3.2-11b-vision-preview` fallback), strict dimensional enforcement (discovered drawing dimensions are guaranteed as defaults in the downstream `PARAMS` dictionary), clipboard image paste (`Ctrl+V`) in the prompt panel, visual synthesis banner displaying the AI's recognized features and dimensional tags, and API response schema extension (`visual_interpretation`, `sketch_parameters`)
+- **Alembic Database Migrations** — Added async Alembic migration environment (`backend/alembic/`, `backend/alembic.ini`) with baseline schema migration (`dd865e7861b0_initial_schema.py`) covering all ORM tables and indexes (`users`, `projects`, `generations`, `versions`), with SQLite batch DDL and PostgreSQL compatibility
+- **Python Syntax Highlighting** — Integrated Prism.js in `CodeInspectorModal.jsx` with custom dark-palette tokens for keywords, functions, numbers, strings, and comments
+- **Parameter Categorization** — Added semantic parameter grouping by engineering category (`Primary Dimensions`, `Features & Details`, `Tolerances & Fits`, `General Parameters`) in the workbench sidebar with real-time `Grouped` / `Flat` toggle
+- **Dark Mode Atelier Theme** — Full CSS custom property theme switch (`[data-theme="dark"]`) with navbar toggle button and `localStorage['cad_theme']` persistence
+- **3D Section Cut Tool** — Interactive clipping plane tool in `Viewer3D.jsx` accessible via the `SECTION` status bar chip to cross-section 3D geometry at Y=0 and view interior chambers and bores
+- **Workspace Drag-to-Reorder** — HTML5 drag-and-drop reordering for project folders in `ProjectSidebar.jsx`
+- **Archetype Live LLM Benchmark** — Added `test_all_20_archetype_prompts_live_llm` in `test_universal_archetypes.py`, runnable with `RUN_LIVE_LLM_BENCHMARK=true` (CI-hermetic by default)
 
 ### Fixed
 - **AST sandbox bypasses** — dunder/alias/lambda blocks + 6 adversarial tests
@@ -35,11 +43,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Seeded-model recompute 422** — `seed_gallery.extract_parameters` typed params `integer` from whole defaults but wrote fractional 0.4×/2.5× min/max bounds, which strict `CADParameter` validation rejects; every seeded model (and its forks) 422'd on any slider drag. Bounds are now snapped to whole numbers, entries are validated with `CADParameter` at seed time, `seed_gallery.py` repairs pre-existing seed/fork rows on run, and the frontend surfaces 422 field details instead of bare "status code 422"
 - **422 request diagnostics** — `RequestValidationError` handler logs field-level reasons server-side (response shape unchanged)
 
+- **Oxlint Zero-Warning Cleanup** — Resolved all 14 React Compiler / Oxlint 1.86 warnings (`refs` during render, `set-state-in-effect`), returning `npm run lint` to 0 errors / 0 warnings
+
 ### Planned
 - PostgreSQL migration (replace SQLite for production)
-- Alembic database migrations
 - Model thumbnail server-side rendering
-- Dark mode toggle
+- 3D viewer: measurement tool (distance between two points)
 
 ---
 

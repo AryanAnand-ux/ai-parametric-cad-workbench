@@ -1,8 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
+import Prism from 'prismjs';
+import 'prismjs/components/prism-python';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
 /**
  * CodeInspectorModal — Dialog for viewing and copying the generated Python CAD build123d script.
+ * Features full syntax highlighting for Python via Prism.js.
  */
 export default function CodeInspectorModal({
   isOpen,
@@ -15,6 +18,15 @@ export default function CodeInspectorModal({
   const [copied, setCopied] = useState(false);
   const containerRef = useRef(null);
   useFocusTrap(containerRef, isOpen && !!pythonCode);
+
+  const highlightedCode = useMemo(() => {
+    if (!pythonCode) return '';
+    try {
+      return Prism.highlight(pythonCode, Prism.languages.python, 'python');
+    } catch {
+      return pythonCode;
+    }
+  }, [pythonCode]);
 
   if (!isOpen || !pythonCode) return null;
 
@@ -62,7 +74,7 @@ export default function CodeInspectorModal({
           </button>
         </div>
 
-        <pre className="modal-code"><code>{pythonCode}</code></pre>
+        <pre className="modal-code"><code className="language-python" dangerouslySetInnerHTML={{ __html: highlightedCode }} /></pre>
 
         <div className="modal-footer">
           <span className="modal-hint" role="status">

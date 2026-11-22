@@ -127,9 +127,15 @@ function STLMesh({
   materialType = 'cad_gray',
   onGeometryLoaded,
   onError,
+  sectionCut = false,
 }) {
   const [geometry, setGeometry] = useState(null);
   const geoRef = useRef(null);
+
+  const clippingPlanes = useMemo(() => {
+    if (!sectionCut) return [];
+    return [new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)];
+  }, [sectionCut]);
 
   useEffect(() => {
     if (!url) return;
@@ -169,16 +175,16 @@ function STLMesh({
   }, [url, onGeometryLoaded, onError]);
 
   // Extract sharp mechanical feature edges (>24 deg) without triangulating curved faces
-  const edgesRef = useRef(null);
   const edgesGeo = useMemo(() => {
-    if (edgesRef.current) edgesRef.current.dispose();
-    if (!geometry) {
-      edgesRef.current = null;
-      return null;
-    }
-    edgesRef.current = new THREE.EdgesGeometry(geometry, 24);
-    return edgesRef.current;
+    if (!geometry) return null;
+    return new THREE.EdgesGeometry(geometry, 24);
   }, [geometry]);
+
+  useEffect(() => {
+    return () => {
+      edgesGeo?.dispose();
+    };
+  }, [edgesGeo]);
 
   if (!geometry) return null;
 
@@ -211,6 +217,8 @@ function STLMesh({
           polygonOffsetFactor={1}
           polygonOffsetUnits={1}
           depthWrite={!styleConfig.transparent}
+          clippingPlanes={clippingPlanes}
+          clipShadows={true}
         />
       </mesh>
 
@@ -298,6 +306,7 @@ const Viewer3D = forwardRef(function Viewer3D(
     showAxes = true,
     showGrid = true,
     showDimensions = true,
+    sectionCut = false,
     onCoordsUpdate,
   },
   ref
@@ -333,7 +342,7 @@ const Viewer3D = forwardRef(function Viewer3D(
       className="viewer-canvas"
       shadows={{ type: THREE.PCFShadowMap }}
       camera={{ position: [85, 65, 85], fov: 45 }}
-      gl={{ antialias: true, alpha: true }}
+      gl={{ antialias: true, alpha: true, localClippingEnabled: true }}
       onPointerMove={(e) => {
         if (onCoordsUpdate && e.point) {
           onCoordsUpdate({
@@ -394,6 +403,7 @@ const Viewer3D = forwardRef(function Viewer3D(
               onGeometryLoaded={handleGeometryLoaded}
               visualStyle={visualStyle}
               materialType={materialType}
+              sectionCut={sectionCut}
             />
             <DimensionBoundingBox geometry={loadedGeometry} visible={showDimensions} />
           </Center>

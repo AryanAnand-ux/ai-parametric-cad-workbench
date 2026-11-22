@@ -218,6 +218,14 @@ class GenerateResponse(BaseModel):
         default=None,
         description="Which LLM model (tier) served the request"
     )
+    visual_interpretation: Optional[str] = Field(
+        default=None,
+        description="For sketch-to-CAD: AI visual interpretation of the uploaded drawing"
+    )
+    sketch_parameters: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="For sketch-to-CAD: dimensions detected directly from the drawing"
+    )
 
 
 class RecomputeRequest(BaseModel):

@@ -19,39 +19,39 @@
 
 ### Backend
 - [ ] Migrate SQLite → PostgreSQL for production deployments
-- [ ] Add Alembic migrations (replace `create_all` on startup)
-- [ ] Add streaming SSE progress for generation pipeline stages (RAG → LLM → Build → Export)
+- [x] Add Alembic migrations (`alembic/` async migrations, baseline revision `dd865e7861b0`)
+- [x] Add streaming SSE progress for generation pipeline stages (RAG → LLM → Build → Export)
 - [ ] Implement model thumbnail generation (render 3D screenshot server-side)
-- [ ] `test_universal_archetypes.py` — run all 20 archetype prompts against live LLM in CI-optional mode
+- [x] `test_universal_archetypes.py` — run all 20 archetype prompts against live LLM in CI-optional mode
 
 ### Frontend
-- [ ] Parameter sidebar: add parameter grouping by category (dimensions, features, tolerances)
+- [x] Parameter sidebar: add parameter grouping by category (dimensions, features, tolerances)
 - [x] Mobile responsive pass for workbench (sidebar collapse, toolbar reflow)
 - [x] Model thumbnails in gallery (vector CAD blueprint archetypes with technical grid & badges)
 
 ### DevOps
 - [x] Dockerfile healthcheck for the backend container (exists in `Dockerfile`)
-- [ ] Set up Dependabot for Python + npm dependency updates
+- [x] Set up Dependabot for Python + npm dependency updates
 
 ---
 
 ## Backlog — Medium Priority
 
-- [ ] Dark mode toggle (CSS custom property swap)
-- [ ] Code inspector: syntax highlighting for generated Python (Prism.js or similar)
-- [ ] Export: add batch export (download all formats as ZIP)
+- [x] Dark mode toggle (CSS custom property swap)
+- [x] Code inspector: syntax highlighting for generated Python (Prism.js)
+- [x] Export: add batch export (download all formats as ZIP)
 - [x] Gallery: add pagination / infinite scroll
-- [ ] Projects sidebar: drag-to-reorder projects
+- [x] Projects sidebar: drag-to-reorder projects
 - [x] Add `CHANGELOG.md` to track version history
 
 ---
 
 ## Backlog — Low Priority / Ideas
 
-- [ ] AI-suggested next prompts (LLM suggests variations based on current model)
+- [x] AI-suggested next prompts (LLM/archetype suggested variations based on current model)
 - [ ] Split-view: prompt history timeline on the left
 - [ ] 3D viewer: measurement tool (distance between two points)
-- [ ] 3D viewer: section cut plane tool
+- [x] 3D viewer: section cut plane tool (interactive clipping plane at Y=0)
 - [x] Add build123d tutorial/docs link in onboarding tour
 - [x] Telemetry HUD: add polygon count, material info
 
@@ -94,6 +94,7 @@
 - [x] Frontend runtime fix — added missing `useCallback` import in `OnboardingTour.jsx` preventing component crash on first visit
 - [x] Doc consolidation — deleted `architecture.md` + `memory.md` as duplicates; doc set is now README, AGENTS, rules, CODEBASE_GUIDE, prd, design, task, CHANGELOG
 - [x] Sketch-to-CAD — `POST /api/generate/sketch` (multipart upload with optional user prompt), `VisionService` with Geometric Chain-of-Thought (Axis Mapping, Base Profile Type, Curve Rules, Feature Elevations), Pydantic `SketchVisionAnalysis` structured outputs, drag-drop upload zone + thumbnail preview in `PromptPanel` with attached prompt guidance, `generatePartFromSketch` in `api.js`, 8 tests in `test_sketch_endpoint.py` (88/88 test suite pass)
+- [x] Complete Polish & Backlog Clearance — Alembic async migrations setup (`alembic/` + baseline revision `dd865e7861b0` stamped to head), live LLM archetype benchmark test in `test_universal_archetypes.py`, full dark mode toggle with CSS custom properties (`[data-theme="dark"]`) and `localStorage` persistence, Python code inspector syntax highlighting via Prism.js with custom CAD token theme, parameter grouping by semantic category (`Dimensions`, `Features`, `Tolerances`, `General`) with grouped/flat toggle, dynamic context-aware modification suggestions, 3D section cut clipping plane in `Viewer3D.jsx`, drag-to-reorder project folders in `ProjectSidebar.jsx`, and oxlint zero-warning cleanup.
 
 ---
 

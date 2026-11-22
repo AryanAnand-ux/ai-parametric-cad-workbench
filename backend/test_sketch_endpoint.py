@@ -121,6 +121,8 @@ async def test_sketch_happy_path_png(mock_cad, mock_llm, mock_vision, monkeypatc
     assert body["script_id"].startswith("sketch_")
     assert body["part_name"] == "Test Block"
     assert body["mesh_url"] == "/static/models/sketch_abc123.stl"
+    assert body["visual_interpretation"] == _FAKE_PARSED.visual_interpretation
+    assert body["sketch_parameters"] == _FAKE_PARSED.identified_parameters
     mock_vision.assert_called_once()
     mock_llm.assert_called_once()
     mock_cad.assert_called_once()

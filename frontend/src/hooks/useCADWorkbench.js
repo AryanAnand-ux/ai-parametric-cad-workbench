@@ -51,6 +51,8 @@ const initialState = {
   modelUsed: null,
   designMode: _p.designMode ?? 'single_solid',
   components: _p.components ?? null,
+  visualInterpretation: null,
+  sketchParameters: null,
   backendStatus: 'checking',
 
   // Sidebar navigation
@@ -146,6 +148,8 @@ function cadWorkbenchReducer(state, action) {
         modelUsed: res.model_used,
         designMode: res.design_mode || 'single_solid',
         components: res.components || null,
+        visualInterpretation: res.visual_interpretation ?? null,
+        sketchParameters: res.sketch_parameters ?? null,
         activeTab: res.parameters && res.parameters.length > 0 ? 'sliders' : state.activeTab,
       };
     }
@@ -364,6 +368,7 @@ export function useCADWorkbench() {
     setShowShareModal: useCallback((v) => setField('showShareModal', v), [setField]),
     setShowOnboarding: useCallback((v) => setField('showOnboarding', v), [setField]),
     setBackendStatus: useCallback((v) => setField('backendStatus', v), [setField]),
+    dismissSketchBadge: useCallback(() => setField('visualInterpretation', null), [setField]),
     setGenerationId: useCallback((v) => setField('generationId', v), [setField]),
     setChatHistory: useCallback((fnOrVal) => {
       setField('chatHistory', typeof fnOrVal === 'function' ? fnOrVal(state.chatHistory) : fnOrVal);
