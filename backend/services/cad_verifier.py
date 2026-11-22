@@ -173,17 +173,33 @@ class CADVerifier:
 
         for model_name in models_to_try:
             try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=[types.Content(role="user", parts=[image_part, text_part])],
-                    config=types.GenerateContentConfig(
-                        system_instruction=_VERIFIER_SYSTEM_PROMPT,
-                        response_mime_type="application/json",
-                        temperature=0.1,
-                        thinking_config=types.ThinkingConfig(thinking_budget=0),
-                        response_schema=VisualVerificationAnalysis,
-                    ),
-                )
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[types.Content(role="user", parts=[image_part, text_part])],
+                        config=types.GenerateContentConfig(
+                            system_instruction=_VERIFIER_SYSTEM_PROMPT,
+                            response_mime_type="application/json",
+                            temperature=0.1,
+                            thinking_config=types.ThinkingConfig(thinking_budget=0),
+                            response_schema=VisualVerificationAnalysis,
+                        ),
+                    )
+                except Exception as schema_err:
+                    logger.warning(
+                        f"[CAD_VERIFY] Model '{model_name}' rejected response_schema ({schema_err}). "
+                        "Retrying without schema constraint..."
+                    )
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[types.Content(role="user", parts=[image_part, text_part])],
+                        config=types.GenerateContentConfig(
+                            system_instruction=_VERIFIER_SYSTEM_PROMPT,
+                            response_mime_type="application/json",
+                            temperature=0.1,
+                            thinking_config=types.ThinkingConfig(thinking_budget=0),
+                        ),
+                    )
                 raw_text = (response.text or "").strip()
                 if raw_text.startswith("```"):
                     raw_text = "\n".join(

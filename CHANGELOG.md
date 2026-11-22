@@ -28,6 +28,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Archetype Live LLM Benchmark** — Added `test_all_20_archetype_prompts_live_llm` in `test_universal_archetypes.py`, runnable with `RUN_LIVE_LLM_BENCHMARK=true` (CI-hermetic by default)
 
 ### Fixed
+- **Gemini Developer API `additionalProperties` Schema Rejection** — Resolved `additionalProperties is only supported in Gemini Enterprise Agent Platform mode` error in `SketchVisionAnalysis` (`services/vision_service.py`). Converted `identified_parameters` from a freeform `Dict[str, float]` to `List[SketchParameterItem]`, compiling to strict OpenAPI JSON Schema without `additionalProperties`. Added `_normalize_identified_parameters` supporting both list-of-items and dict representations, and added automatic fallback to unconstrained JSON parsing in `vision_service.py` and `cad_verifier.py` if schema constraints are rejected by the API endpoint.
 - **AST sandbox bypasses** — dunder/alias/lambda blocks + 6 adversarial tests
 - **Anonymous production compute** — 403 gate when `ENVIRONMENT==production`
 - **Artifact auth** — download ownership checks; 12-char script IDs

@@ -20,7 +20,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -29,6 +29,18 @@ logger = logging.getLogger("cad_workbench.vision_service")
 # ---------------------------------------------------------------------------
 # Pydantic Structured Output Schema for Gemini Vision
 # ---------------------------------------------------------------------------
+
+class SketchParameterItem(BaseModel):
+    """Individual extracted CAD parameter name and numeric value."""
+    name: str = Field(
+        ...,
+        description="Parameter name in snake_case (e.g. 'length', 'outer_diameter', 'wall_thickness').",
+    )
+    value: float = Field(
+        ...,
+        description="Numeric value in mm or degrees.",
+    )
+
 
 class SketchVisionAnalysis(BaseModel):
     """Structured Geometric Chain-of-Thought output from Gemini Vision."""
@@ -60,9 +72,9 @@ class SketchVisionAnalysis(BaseModel):
         ...,
         description="Step-by-step structural blueprint of primary body, feature attachments, cuts, chamfers, and through-holes.",
     )
-    identified_parameters: Dict[str, float] = Field(
-        ...,
-        description="Key numeric dimensions in mm or degrees as a snake_case dictionary.",
+    identified_parameters: List[SketchParameterItem] = Field(
+        default_factory=list,
+        description="Key numeric dimensions in mm or degrees as a list of name/value pairs.",
     )
     derived_prompt: str = Field(
         ...,
@@ -163,8 +175,75 @@ def _extract_string_field(text: str, field_name: str) -> Optional[str]:
     return None
 
 
+def _normalize_identified_parameters(raw: Any) -> Dict[str, float]:
+    """
+    Normalize identified parameters from various formats (list of items, dict, or nested structures)
+    into a flat Dict[str, float].
+    """
+    if not raw:
+        return {}
+    result: Dict[str, float] = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            try:
+                result[str(k)] = float(v)
+            except (ValueError, TypeError):
+                pass
+    elif isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict):
+                name = item.get("name") or item.get("key") or item.get("param")
+                val = item.get("value") or item.get("val")
+                if name is not None and val is not None:
+                    try:
+                        result[str(name)] = float(val)
+                    except (ValueError, TypeError):
+                        pass
+                elif len(item) == 1:
+                    for k, v in item.items():
+                        try:
+                            result[str(k)] = float(v)
+                        except (ValueError, TypeError):
+                            pass
+            elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                try:
+                    result[str(item[0])] = float(item[1])
+                except (ValueError, TypeError):
+                    pass
+    return result
+
+
 def _extract_params_dict(text: str) -> Dict[str, float]:
     """Extract identified_parameters dict using brace-depth counting or key:value regex."""
+    # First, handle array format: "identified_parameters": [ {"name": "...", "value": ...}, ... ]
+    m_arr = re.search(r'"identified_parameters"\s*:\s*\[', text)
+    if m_arr:
+        start = m_arr.end() - 1
+        end = text.find(']', start)
+        if end != -1:
+            try:
+                arr = json.loads(text[start:end+1])
+                norm = _normalize_identified_parameters(arr)
+                if norm:
+                    return norm
+            except Exception:
+                pass
+        # Regex search for {"name": "...", "value": ...} within the array
+        result = {}
+        snippet = text[start:end+1] if end != -1 else text[start:start+1500]
+        for item_m in re.finditer(
+            r'\{[^{}]*"name"\s*:\s*"([a-z0-9_]+)"[^{}]*"value"\s*:\s*([0-9]+(?:\.[0-9]+)?)[^{}]*\}',
+            snippet,
+            re.IGNORECASE,
+        ):
+            try:
+                result[item_m.group(1)] = float(item_m.group(2))
+            except ValueError:
+                pass
+        if result:
+            return result
+
+    # Second, handle dict format: "identified_parameters": { "param": 10, ... }
     m = re.search(r'"identified_parameters"\s*:\s*\{', text)
     if m:
         start = m.end() - 1
@@ -361,8 +440,7 @@ def _robust_parse_vision(raw: str) -> dict:
             logger.warning("[VISION] JSON parsed but derived_prompt is empty — synthesizing fallback")
             data["derived_prompt"] = _synthesize_derived_prompt(
                 data.get("visual_interpretation", ""),
-                {k: float(v) for k, v in (data.get("identified_parameters") or {}).items()
-                 if isinstance(v, (int, float))},
+                _normalize_identified_parameters(data.get("identified_parameters")),
                 axis_mapping=data.get("axis_mapping", ""),
                 base_profile_strategy=data.get("base_profile_strategy", ""),
                 curve_strategy=data.get("curve_strategy", ""),
@@ -397,7 +475,7 @@ def _robust_parse_vision(raw: str) -> dict:
         logger.warning("[VISION] derived_prompt not found — synthesizing from other fields")
         data["derived_prompt"] = _synthesize_derived_prompt(
             data.get("visual_interpretation", ""),
-            data.get("identified_parameters", {}),
+            _normalize_identified_parameters(data.get("identified_parameters")),
             axis_mapping=data.get("axis_mapping", ""),
             base_profile_strategy=data.get("base_profile_strategy", ""),
             curve_strategy=data.get("curve_strategy", ""),
@@ -486,17 +564,34 @@ class VisionService:
             for model_name in models_to_try:
                 logger.info(f"[VISION] Attempting model '{model_name}' for sketch parsing...")
                 try:
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=[types.Content(role="user", parts=[image_part, text_part])],
-                        config=types.GenerateContentConfig(
-                            system_instruction=_VISION_SYSTEM_PROMPT,
-                            response_mime_type="application/json",
-                            temperature=0.1,
-                            thinking_config=types.ThinkingConfig(thinking_budget=0),
-                            response_schema=SketchVisionAnalysis,
-                        ),
-                    )
+                    try:
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=[types.Content(role="user", parts=[image_part, text_part])],
+                            config=types.GenerateContentConfig(
+                                system_instruction=_VISION_SYSTEM_PROMPT,
+                                response_mime_type="application/json",
+                                temperature=0.1,
+                                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                                response_schema=SketchVisionAnalysis,
+                            ),
+                        )
+                    except Exception as schema_err:
+                        logger.warning(
+                            f"[VISION] Model '{model_name}' rejected response_schema ({schema_err}). "
+                            "Retrying without schema constraint..."
+                        )
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=[types.Content(role="user", parts=[image_part, text_part])],
+                            config=types.GenerateContentConfig(
+                                system_instruction=_VISION_SYSTEM_PROMPT,
+                                response_mime_type="application/json",
+                                temperature=0.1,
+                                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                            ),
+                        )
+
                     raw = (response.text or "").strip()
                     if raw.startswith("```"):
                         raw = "\n".join(
@@ -522,11 +617,7 @@ class VisionService:
 
         parsed = ParsedSketch(
             visual_interpretation=str(data.get("visual_interpretation", "")).strip(),
-            identified_parameters={
-                k: float(v)
-                for k, v in (data.get("identified_parameters") or {}).items()
-                if isinstance(v, (int, float))
-            },
+            identified_parameters=_normalize_identified_parameters(data.get("identified_parameters")),
             derived_prompt=str(data.get("derived_prompt", "")).strip(),
             axis_mapping=str(data.get("axis_mapping", "")).strip(),
             base_profile_strategy=str(data.get("base_profile_strategy", "")).strip(),
